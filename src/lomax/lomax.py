@@ -155,6 +155,14 @@ class Lomax:
             "identifier": item.metadata.get("identifier", ""),
             "title": item.metadata.get("title", ""),
             "description": item.metadata.get("description", ""),
+            "creator": item.metadata.get("creator"),
+            "date": item.metadata.get("date"),
+            "year": item.metadata.get("year"),
+            "subject": item.metadata.get("subject"),
+            "collection": item.metadata.get("collection"),
+            "licenseurl": item.metadata.get("licenseurl"),
+            "rights": item.metadata.get("rights"),
+            "publisher": item.metadata.get("publisher"),
             "files": [
                 {
                     "name": df.name,

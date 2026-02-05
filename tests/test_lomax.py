@@ -39,6 +39,7 @@ def _make_ia_item(
     title: str = "Test Title",
     description: str = "Test description",
     files: list[dict] | None = None,
+    **extra_metadata: str | list[str],
 ) -> MagicMock:
     """Build a fake internetarchive Item object."""
     item = MagicMock()
@@ -47,6 +48,7 @@ def _make_ia_item(
         "identifier": identifier,
         "title": title,
         "description": description,
+        **extra_metadata,
     }
     if files is None:
         files = [_make_ia_file("photo.jpg")]
@@ -154,6 +156,14 @@ class TestDownloadItem:
             title="Test Title",
             description="Test description",
             files=[_make_ia_file("photo.jpg", "JPEG", "2048", "aaa")],
+            creator="John Doe",
+            date="1955-03-12",
+            year="1955",
+            subject=["jazz", "photography"],
+            collection=["jazz-collection"],
+            licenseurl="https://creativecommons.org/licenses/by/4.0/",
+            rights="Public Domain",
+            publisher="Archive Press",
         )
         mock_ia.get_item.return_value = item
 
@@ -181,6 +191,17 @@ class TestDownloadItem:
         meta = json.loads(result.metadata_path.read_text())
         assert meta["identifier"] == "test-item"
         assert meta["title"] == "Test Title"
+        assert meta["description"] == "Test description"
+        assert meta["creator"] == "John Doe"
+        assert meta["date"] == "1955-03-12"
+        assert meta["year"] == "1955"
+        assert meta["subject"] == ["jazz", "photography"]
+        assert meta["collection"] == ["jazz-collection"]
+        assert meta["licenseurl"] == (
+            "https://creativecommons.org/licenses/by/4.0/"
+        )
+        assert meta["rights"] == "Public Domain"
+        assert meta["publisher"] == "Archive Press"
         assert len(meta["files"]) == 1
         assert meta["files"][0]["name"] == "photo.jpg"
         assert meta["files"][0]["format"] == "JPEG"
@@ -215,6 +236,43 @@ class TestDownloadItem:
         meta = json.loads(result.metadata_path.read_text())
         expected_url = "https://archive.org/download/url-test/img.png"
         assert meta["files"][0]["url"] == expected_url
+
+    @patch("lomax.lomax.requests.get")
+    @patch("lomax.lomax.ia")
+    def test_missing_metadata_fields_are_none(
+        self,
+        mock_ia: MagicMock,
+        mock_get: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test metadata fields default to None when absent."""
+        item = _make_ia_item(
+            "sparse-item",
+            title="Sparse",
+            description="No extras",
+            files=[_make_ia_file("img.jpg")],
+        )
+        mock_ia.get_item.return_value = item
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.content = b"bytes"
+        mock_get.return_value = mock_resp
+
+        sr = SearchResult(identifier="sparse-item", title="Sparse")
+        lx = Lomax(output_dir=tmp_path / "output")
+        result = lx.download_item(sr)
+
+        assert result is not None
+        meta = json.loads(result.metadata_path.read_text())
+        assert meta["creator"] is None
+        assert meta["date"] is None
+        assert meta["year"] is None
+        assert meta["subject"] is None
+        assert meta["collection"] is None
+        assert meta["licenseurl"] is None
+        assert meta["rights"] is None
+        assert meta["publisher"] is None
 
     @patch("lomax.lomax.ia")
     def test_no_image_files(
