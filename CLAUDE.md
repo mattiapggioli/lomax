@@ -20,7 +20,8 @@ uv run python main.py "keywords"         # Run via main.py
 
 ## Architecture
 
-- `main.py` — Entry point. Parses CLI arguments (`prompt`, `--output-dir`, `--max-results`) and runs the `Lomax` pipeline.
+- `main.py` — Entry point. Parses CLI arguments (`prompt`, `--output-dir`, `--max-results`, `--config`) and runs the `Lomax` pipeline. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults.
+- `lomax.toml` — TOML config file with a `[lomax]` section (`output_dir`, `max_results`). Loaded via stdlib `tomllib`.
 - `src/lomax/lomax.py` — `Lomax` orchestrator: wires the full pipeline (prompt → keywords → search → download). Downloads image files via `requests`, writes `metadata.json` per item. Uses `IMAGE_FORMATS` set to filter IA files. Key dataclasses: `DownloadResult`, `DownloadedFile`.
 - `src/lomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()`, returns `SearchResult` dataclasses. Builds IA queries by AND-joining keywords with a `mediatype` filter.
 - `src/lomax/semantic_bridge.py` — `extract_keywords()` converts prompts to keyword lists. Currently a simple comma-split placeholder; intended to be replaced with LLM-based extraction.

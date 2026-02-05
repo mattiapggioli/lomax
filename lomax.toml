@@ -1,0 +1,3 @@
+[lomax]
+output_dir = "lomax_output"
+max_results = 10
