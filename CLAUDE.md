@@ -62,6 +62,14 @@ lomax/
 └── CLAUDE.md
 ```
 
+## Development Workflow
+
+Follow TDD (Test-Driven Development):
+1. **Write tests first** - Define expected behavior in tests before implementation
+2. **Write the implementation** - Make the tests pass
+3. **Run tests** - Verify with `uv run pytest`
+4. **Lint and format** - Run `uv run ruff check . && uv run ruff format .`
+
 ## Code Conventions
 
 - Use type hints for function signatures
