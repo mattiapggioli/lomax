@@ -1,0 +1,35 @@
+[project]
+name = "lomax"
+version = "0.1.0"
+description = "An image retrieval tool that fetches images from the Internet Archive based on natural language prompts"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "internetarchive",
+]
+
+[project.scripts]
+lomax = "lomax.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lomax"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
