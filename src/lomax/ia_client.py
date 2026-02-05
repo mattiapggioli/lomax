@@ -62,7 +62,9 @@ class IAClient:
         keyword_query = " AND ".join(keywords)
         return f"({keyword_query}) AND mediatype:{self.mediatype}"
 
-    def _execute_search(self, query: str, max_results: int) -> list[SearchResult]:
+    def _execute_search(
+        self, query: str, max_results: int
+    ) -> list[SearchResult]:
         """Execute the search query against the Internet Archive.
 
         Args:
