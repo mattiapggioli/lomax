@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Lomax
 
-A Python library for searching and downloading images from the Internet Archive based on keyword prompts. Search and download are decoupled: `Lomax.search()` returns structured data (`LomaxResult` with `ImageResult` objects), and `download_images()` is a separate utility for writing files to disk.
+A Python library for searching and downloading images from the Internet Archive based on keyword prompts. `Lomax.search()` returns structured results (`LomaxResult` / `ImageResult`). `download_images()` is a convenience utility to save files to disk.
 
 ## Commands
 
@@ -34,11 +34,17 @@ Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax i
 
 Follow TDD: write tests first, then implement, then run `uv run pytest`, then `uv run ruff check . && uv run ruff format .`
 
+## Writing Style
+
+- README and user-facing docs should be practical, not didactic. Describe what things do, don't explain design rationale or architectural justifications.
+- Avoid "code lecture" tone (e.g. don't write "X and Y are decoupled for flexibility"). Just state what the API offers.
+
 ## Code Conventions
 
 - Type hints on all function signatures
 - Docstrings on public functions and classes
 - Ruff enforces PEP 8 with 79-char line length (rules: E, F, I, W)
 - Tests in `tests/` mirroring `src/` structure
-- Tests mock external dependencies (`internetarchive`, `requests`) via `unittest.mock.patch`
-- **Exception:** `tests/test_ia_client.py` hits the real Internet Archive API (no mocks) — these tests require network access and may be slow
+- `test_lomax.py` mocks `internetarchive` only (no `requests` — search has no network/filesystem side effects)
+- `test_util.py` mocks `requests.get` and uses `tmp_path` for filesystem assertions
+- **Exception:** `test_ia_client.py` hits the real Internet Archive API (no mocks) — requires network access and may be slow
