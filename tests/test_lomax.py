@@ -1,13 +1,12 @@
 """Tests for the Lomax orchestrator."""
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from lomax.ia_client import SearchResult
 from lomax.lomax import Lomax
+from lomax.result import ImageResult, LomaxResult
 
 IMAGE_FORMATS = {
     "JPEG",
@@ -59,32 +58,28 @@ def _make_ia_item(
 class TestLomaxInit:
     """Tests for Lomax initialization."""
 
-    def test_default_params(self, tmp_path: Path) -> None:
+    def test_default_params(self) -> None:
         """Test Lomax initializes with default parameters."""
-        lx = Lomax(output_dir=tmp_path / "output")
+        lx = Lomax()
         assert lx.max_results == 10
-        assert lx.output_dir == tmp_path / "output"
 
-    def test_custom_params(self, tmp_path: Path) -> None:
+    def test_custom_params(self) -> None:
         """Test Lomax initializes with custom parameters."""
-        lx = Lomax(output_dir=tmp_path / "out", max_results=5)
+        lx = Lomax(max_results=5)
         assert lx.max_results == 5
 
 
-class TestLomaxRun:
-    """Tests for Lomax.run() pipeline."""
+class TestLomaxSearch:
+    """Tests for Lomax.search() pipeline."""
 
-    @patch("lomax.lomax.requests.get")
     @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
-    def test_run_full_pipeline(
+    def test_search_full_pipeline(
         self,
         mock_extract: MagicMock,
         mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
     ) -> None:
-        """Test run() wires keywords → search → download."""
+        """Test search() wires keywords -> IA search -> image filtering."""
         mock_extract.return_value = ["jazz", "photo"]
 
         sr = SearchResult(
@@ -96,314 +91,112 @@ class TestLomaxRun:
 
         item = _make_ia_item(
             "jazz-1",
-            files=[_make_ia_file("pic.jpg")],
+            files=[_make_ia_file("pic.jpg", "JPEG", "2048", "aaa")],
         )
         mock_ia.get_item.return_value = item
 
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"\xff\xd8fake-jpeg"
-        mock_get.return_value = mock_resp
-
-        lx = Lomax(output_dir=tmp_path / "output", max_results=1)
+        lx = Lomax(max_results=1)
         lx._client = MagicMock()
         lx._client.search.return_value = [sr]
-        results = lx.run("jazz, photo")
+        result = lx.search("jazz, photo")
 
         mock_extract.assert_called_once_with("jazz, photo")
         lx._client.search.assert_called_once_with(
             ["jazz", "photo"], max_results=1
         )
-        assert len(results) == 1
-        assert results[0].identifier == "jazz-1"
+        assert isinstance(result, LomaxResult)
+        assert result.prompt == "jazz, photo"
+        assert result.keywords == ["jazz", "photo"]
+        assert result.total_images == 1
+        assert result.total_items == 1
+        assert result.images[0].identifier == "jazz-1"
+        assert result.images[0].filename == "pic.jpg"
+        assert result.images[0].download_url == (
+            "https://archive.org/download/jazz-1/pic.jpg"
+        )
+        assert result.images[0].format == "JPEG"
+        assert result.images[0].size == 2048
+        assert result.images[0].md5 == "aaa"
 
     @patch("lomax.lomax.extract_keywords")
-    def test_run_empty_search_results(
+    def test_search_empty_results(
         self,
         mock_extract: MagicMock,
-        tmp_path: Path,
     ) -> None:
-        """Test run() returns empty list when search finds nothing."""
+        """Test search() returns empty LomaxResult when nothing found."""
         mock_extract.return_value = ["nonexistent"]
 
-        lx = Lomax(output_dir=tmp_path / "output")
+        lx = Lomax()
         lx._client = MagicMock()
         lx._client.search.return_value = []
-        results = lx.run("nonexistent")
-        assert results == []
+        result = lx.search("nonexistent")
 
-    def test_run_empty_prompt_raises(self, tmp_path: Path) -> None:
-        """Test run() propagates ValueError from extract_keywords."""
-        lx = Lomax(output_dir=tmp_path / "output")
+        assert isinstance(result, LomaxResult)
+        assert result.total_images == 0
+        assert result.total_items == 0
+        assert result.images == []
+
+    def test_search_empty_prompt_raises(self) -> None:
+        """Test search() propagates ValueError from extract_keywords."""
+        lx = Lomax()
         with pytest.raises(ValueError, match="Prompt cannot be empty"):
-            lx.run("")
-
-
-class TestDownloadItem:
-    """Tests for Lomax.download_item()."""
-
-    @patch("lomax.lomax.requests.get")
-    @patch("lomax.lomax.ia")
-    def test_successful_download(
-        self,
-        mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test download_item() downloads files and writes metadata."""
-        item = _make_ia_item(
-            "test-item",
-            title="Test Title",
-            description="Test description",
-            files=[_make_ia_file("photo.jpg", "JPEG", "2048", "aaa")],
-            creator="John Doe",
-            date="1955-03-12",
-            year="1955",
-            subject=["jazz", "photography"],
-            collection=["jazz-collection"],
-            licenseurl="https://creativecommons.org/licenses/by/4.0/",
-            rights="Public Domain",
-            publisher="Archive Press",
-        )
-        mock_ia.get_item.return_value = item
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"fake-image-bytes"
-        mock_get.return_value = mock_resp
-
-        sr = SearchResult(identifier="test-item", title="Test Title")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
-
-        assert result is not None
-        assert result.identifier == "test-item"
-        assert result.files_downloaded == 1
-        assert result.directory == tmp_path / "output" / "test-item"
-        assert result.metadata_path.exists()
-
-        # Verify image file was written
-        img_path = tmp_path / "output" / "test-item" / "photo.jpg"
-        assert img_path.exists()
-        assert img_path.read_bytes() == b"fake-image-bytes"
-
-        # Verify metadata.json content
-        meta = json.loads(result.metadata_path.read_text())
-        assert meta["identifier"] == "test-item"
-        assert meta["title"] == "Test Title"
-        assert meta["description"] == "Test description"
-        assert meta["creator"] == "John Doe"
-        assert meta["date"] == "1955-03-12"
-        assert meta["year"] == "1955"
-        assert meta["subject"] == ["jazz", "photography"]
-        assert meta["collection"] == ["jazz-collection"]
-        assert meta["licenseurl"] == (
-            "https://creativecommons.org/licenses/by/4.0/"
-        )
-        assert meta["rights"] == "Public Domain"
-        assert meta["publisher"] == "Archive Press"
-        assert len(meta["files"]) == 1
-        assert meta["files"][0]["name"] == "photo.jpg"
-        assert meta["files"][0]["format"] == "JPEG"
-        assert meta["files"][0]["size"] == 2048
-        assert meta["files"][0]["md5"] == "aaa"
-
-    @patch("lomax.lomax.requests.get")
-    @patch("lomax.lomax.ia")
-    def test_metadata_contains_url(
-        self,
-        mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test metadata file entries contain download URLs."""
-        item = _make_ia_item(
-            "url-test",
-            files=[_make_ia_file("img.png", "PNG")],
-        )
-        mock_ia.get_item.return_value = item
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"png-bytes"
-        mock_get.return_value = mock_resp
-
-        sr = SearchResult(identifier="url-test", title="URL Test")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
-
-        assert result is not None
-        meta = json.loads(result.metadata_path.read_text())
-        expected_url = "https://archive.org/download/url-test/img.png"
-        assert meta["files"][0]["url"] == expected_url
-
-    @patch("lomax.lomax.requests.get")
-    @patch("lomax.lomax.ia")
-    def test_missing_metadata_fields_are_none(
-        self,
-        mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test metadata fields default to None when absent."""
-        item = _make_ia_item(
-            "sparse-item",
-            title="Sparse",
-            description="No extras",
-            files=[_make_ia_file("img.jpg")],
-        )
-        mock_ia.get_item.return_value = item
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"bytes"
-        mock_get.return_value = mock_resp
-
-        sr = SearchResult(identifier="sparse-item", title="Sparse")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
-
-        assert result is not None
-        meta = json.loads(result.metadata_path.read_text())
-        assert meta["creator"] is None
-        assert meta["date"] is None
-        assert meta["year"] is None
-        assert meta["subject"] is None
-        assert meta["collection"] is None
-        assert meta["licenseurl"] is None
-        assert meta["rights"] is None
-        assert meta["publisher"] is None
+            lx.search("")
 
     @patch("lomax.lomax.ia")
-    def test_no_image_files(
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_skips_item_with_no_images(
         self,
+        mock_extract: MagicMock,
         mock_ia: MagicMock,
-        tmp_path: Path,
     ) -> None:
-        """Test download_item() returns None when no image files."""
+        """Test search() skips items that have no image files."""
+        mock_extract.return_value = ["test"]
+
         item = _make_ia_item(
             "no-images",
             files=[_make_ia_file("data.xml", "Metadata")],
         )
         mock_ia.get_item.return_value = item
 
-        sr = SearchResult(identifier="no-images", title="No Images")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
+        lx = Lomax()
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult(identifier="no-images", title="No Images")
+        ]
+        result = lx.search("test")
 
-        assert result is None
+        assert result.total_images == 0
 
     @patch("lomax.lomax.ia")
-    def test_get_item_failure(
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_skips_item_on_get_item_failure(
         self,
+        mock_extract: MagicMock,
         mock_ia: MagicMock,
-        tmp_path: Path,
     ) -> None:
-        """Test download_item() returns None when get_item fails."""
+        """Test search() skips items when get_item raises."""
+        mock_extract.return_value = ["test"]
         mock_ia.get_item.side_effect = Exception("API error")
 
-        sr = SearchResult(identifier="fail-item", title="Fail")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
+        lx = Lomax()
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult(identifier="fail", title="Fail")
+        ]
+        result = lx.search("test")
 
-        assert result is None
+        assert result.total_images == 0
 
-    @patch("lomax.lomax.requests.get")
     @patch("lomax.lomax.ia")
-    def test_partial_download_failure(
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_multiple_files_per_item(
         self,
+        mock_extract: MagicMock,
         mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
     ) -> None:
-        """Test download_item() skips failed files, keeps others."""
-        item = _make_ia_item(
-            "partial",
-            files=[
-                _make_ia_file("good.jpg", "JPEG"),
-                _make_ia_file("bad.png", "PNG"),
-            ],
-        )
-        mock_ia.get_item.return_value = item
+        """Test search() returns multiple ImageResults per item."""
+        mock_extract.return_value = ["multi"]
 
-        good_resp = MagicMock()
-        good_resp.raise_for_status = MagicMock()
-        good_resp.content = b"good-bytes"
-
-        bad_resp = MagicMock()
-        bad_resp.raise_for_status.side_effect = Exception("404")
-
-        mock_get.side_effect = [good_resp, bad_resp]
-
-        sr = SearchResult(identifier="partial", title="Partial")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
-
-        assert result is not None
-        assert result.files_downloaded == 1
-
-        meta = json.loads(result.metadata_path.read_text())
-        assert len(meta["files"]) == 1
-        assert meta["files"][0]["name"] == "good.jpg"
-
-    @patch("lomax.lomax.requests.get")
-    @patch("lomax.lomax.ia")
-    def test_all_downloads_fail(
-        self,
-        mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test download_item() returns None when all downloads fail."""
-        item = _make_ia_item(
-            "all-fail",
-            files=[_make_ia_file("a.jpg", "JPEG")],
-        )
-        mock_ia.get_item.return_value = item
-
-        mock_get.side_effect = Exception("Network error")
-
-        sr = SearchResult(identifier="all-fail", title="All Fail")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
-
-        assert result is None
-
-    @patch("lomax.lomax.requests.get")
-    @patch("lomax.lomax.ia")
-    def test_directory_creation(
-        self,
-        mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test download_item() creates nested directories."""
-        item = _make_ia_item("dir-test", files=[_make_ia_file("x.jpg")])
-        mock_ia.get_item.return_value = item
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"bytes"
-        mock_get.return_value = mock_resp
-
-        out = tmp_path / "deep" / "nested" / "output"
-        sr = SearchResult(identifier="dir-test", title="Dir Test")
-        lx = Lomax(output_dir=out)
-        result = lx.download_item(sr)
-
-        assert result is not None
-        assert result.directory.exists()
-        assert result.directory == out / "dir-test"
-
-    @patch("lomax.lomax.requests.get")
-    @patch("lomax.lomax.ia")
-    def test_multiple_files(
-        self,
-        mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Test download_item() handles multiple image files."""
         item = _make_ia_item(
             "multi",
             files=[
@@ -414,36 +207,28 @@ class TestDownloadItem:
         )
         mock_ia.get_item.return_value = item
 
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"img-data"
-        mock_get.return_value = mock_resp
+        lx = Lomax()
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult(identifier="multi", title="Multi")
+        ]
+        result = lx.search("multi")
 
-        sr = SearchResult(identifier="multi", title="Multi")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
+        assert result.total_images == 3
+        assert result.total_items == 1
+        filenames = {img.filename for img in result.images}
+        assert filenames == {"a.jpg", "b.png", "c.gif"}
 
-        assert result is not None
-        assert result.files_downloaded == 3
-
-        meta = json.loads(result.metadata_path.read_text())
-        assert len(meta["files"]) == 3
-        names = {f["name"] for f in meta["files"]}
-        assert names == {"a.jpg", "b.png", "c.gif"}
-
-
-class TestFormatFiltering:
-    """Tests for image format filtering."""
-
-    @patch("lomax.lomax.requests.get")
     @patch("lomax.lomax.ia")
-    def test_only_image_formats_downloaded(
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_filters_non_image_formats(
         self,
+        mock_extract: MagicMock,
         mock_ia: MagicMock,
-        mock_get: MagicMock,
-        tmp_path: Path,
     ) -> None:
         """Test that non-image formats are filtered out."""
+        mock_extract.return_value = ["test"]
+
         item = _make_ia_item(
             "filter-test",
             files=[
@@ -459,18 +244,137 @@ class TestFormatFiltering:
         )
         mock_ia.get_item.return_value = item
 
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.content = b"data"
-        mock_get.return_value = mock_resp
+        lx = Lomax()
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult(identifier="filter-test", title="Filter")
+        ]
+        result = lx.search("test")
 
-        sr = SearchResult(identifier="filter-test", title="Filter Test")
-        lx = Lomax(output_dir=tmp_path / "output")
-        result = lx.download_item(sr)
-
-        assert result is not None
-        assert result.files_downloaded == 6
-
-        meta = json.loads(result.metadata_path.read_text())
-        formats = {f["format"] for f in meta["files"]}
+        assert result.total_images == 6
+        formats = {img.format for img in result.images}
         assert formats <= IMAGE_FORMATS
+
+    @patch("lomax.lomax.ia")
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_includes_item_metadata(
+        self,
+        mock_extract: MagicMock,
+        mock_ia: MagicMock,
+    ) -> None:
+        """Test that ImageResult.metadata contains item-level fields."""
+        mock_extract.return_value = ["jazz"]
+
+        item = _make_ia_item(
+            "meta-test",
+            title="Jazz Photo",
+            description="A jazz photo",
+            files=[_make_ia_file("pic.jpg")],
+            creator="John Doe",
+            date="1955-03-12",
+            year="1955",
+            subject=["jazz", "photography"],
+            collection=["jazz-collection"],
+            licenseurl="https://creativecommons.org/licenses/by/4.0/",
+            rights="Public Domain",
+            publisher="Archive Press",
+        )
+        mock_ia.get_item.return_value = item
+
+        lx = Lomax()
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult(identifier="meta-test", title="Jazz Photo")
+        ]
+        result = lx.search("jazz")
+
+        meta = result.images[0].metadata
+        assert meta["identifier"] == "meta-test"
+        assert meta["title"] == "Jazz Photo"
+        assert meta["description"] == "A jazz photo"
+        assert meta["creator"] == "John Doe"
+        assert meta["date"] == "1955-03-12"
+        assert meta["year"] == "1955"
+        assert meta["subject"] == ["jazz", "photography"]
+        assert meta["collection"] == ["jazz-collection"]
+        assert meta["rights"] == "Public Domain"
+        assert meta["publisher"] == "Archive Press"
+
+    @patch("lomax.lomax.ia")
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_missing_metadata_fields_are_none(
+        self,
+        mock_extract: MagicMock,
+        mock_ia: MagicMock,
+    ) -> None:
+        """Test metadata fields default to None when absent."""
+        mock_extract.return_value = ["test"]
+
+        item = _make_ia_item(
+            "sparse",
+            title="Sparse",
+            description="No extras",
+            files=[_make_ia_file("img.jpg")],
+        )
+        mock_ia.get_item.return_value = item
+
+        lx = Lomax()
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult(identifier="sparse", title="Sparse")
+        ]
+        result = lx.search("test")
+
+        meta = result.images[0].metadata
+        assert meta["creator"] is None
+        assert meta["date"] is None
+        assert meta["year"] is None
+        assert meta["subject"] is None
+        assert meta["collection"] is None
+        assert meta["licenseurl"] is None
+        assert meta["rights"] is None
+        assert meta["publisher"] is None
+
+
+class TestLomaxResultToDict:
+    """Tests for LomaxResult.to_dict() serialization."""
+
+    def test_to_dict_structure(self) -> None:
+        """Test to_dict() returns correct structure."""
+        img = ImageResult(
+            identifier="test-id",
+            filename="photo.jpg",
+            download_url="https://archive.org/download/test-id/photo.jpg",
+            format="JPEG",
+            size=1024,
+            md5="abc123",
+            metadata={"title": "Test"},
+        )
+        result = LomaxResult(
+            prompt="jazz",
+            keywords=["jazz"],
+            images=[img],
+        )
+        d = result.to_dict()
+
+        assert d["prompt"] == "jazz"
+        assert d["keywords"] == ["jazz"]
+        assert d["total_items"] == 1
+        assert d["total_images"] == 1
+        assert len(d["images"]) == 1
+        assert d["images"][0]["identifier"] == "test-id"
+        assert d["images"][0]["filename"] == "photo.jpg"
+        assert d["images"][0]["metadata"] == {"title": "Test"}
+
+    def test_to_dict_empty_result(self) -> None:
+        """Test to_dict() with no images."""
+        result = LomaxResult(
+            prompt="nothing",
+            keywords=["nothing"],
+            images=[],
+        )
+        d = result.to_dict()
+
+        assert d["total_items"] == 0
+        assert d["total_images"] == 0
+        assert d["images"] == []

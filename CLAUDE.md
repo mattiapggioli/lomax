@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Lomax
 
-A Python library for searching and downloading images from the Internet Archive based on keyword prompts. Three-stage pipeline: (1) semantic bridge converts prompt to keywords, (2) `IAClient` searches the Internet Archive, (3) `Lomax` orchestrator downloads matching image files with metadata.
+A Python library for searching and downloading images from the Internet Archive based on keyword prompts. Search and download are decoupled: `Lomax.search()` returns structured data (`LomaxResult` with `ImageResult` objects), and `download_images()` is a separate utility for writing files to disk.
 
 ## Commands
 
@@ -20,12 +20,15 @@ uv run python main.py "keywords"         # Run via main.py
 
 ## Architecture
 
-- `main.py` — Entry point. Parses CLI arguments (`prompt`, `--output-dir`, `--max-results`, `--config`) and runs the `Lomax` pipeline. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults.
+Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax import Lomax, LomaxResult, ImageResult, download_images`.
+
+- `main.py` — CLI entry point. Calls `Lomax.search()` then `download_images()`. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults.
 - `lomax.toml` — TOML config file with a `[lomax]` section (`output_dir`, `max_results`). Loaded via stdlib `tomllib`.
-- `src/lomax/lomax.py` — `Lomax` orchestrator: wires the full pipeline (prompt → keywords → search → download). Downloads image files via `requests`, writes `metadata.json` per item. Uses `IMAGE_FORMATS` set to filter IA files. Key dataclasses: `DownloadResult`, `DownloadedFile`.
+- `src/lomax/result.py` — Data structures: `ImageResult` (single image file with download URL, format, size, md5, item metadata dict) and `LomaxResult` (prompt, keywords, list of `ImageResult`, `to_dict()` for JSON serialization).
+- `src/lomax/lomax.py` — `Lomax` orchestrator: search-only pipeline (prompt → keywords → IA search → image filtering → `LomaxResult`). No filesystem side effects. Uses `IMAGE_FORMATS` set to filter IA files.
+- `src/lomax/util.py` — `download_images(result, output_dir)`: downloads files from `ImageResult.download_url`, saves to `{output_dir}/{identifier}/{filename}`, writes `metadata.json` per item.
 - `src/lomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()`, returns `SearchResult` dataclasses. Builds IA queries by AND-joining keywords with a `mediatype` filter.
 - `src/lomax/semantic_bridge.py` — `extract_keywords()` converts prompts to keyword lists. Currently a simple comma-split placeholder; intended to be replaced with LLM-based extraction.
-- `src/lomax/__init__.py` — Public API exports `Lomax` and `DownloadResult`.
 
 ## Development Workflow
 
@@ -38,3 +41,4 @@ Follow TDD: write tests first, then implement, then run `uv run pytest`, then `u
 - Ruff enforces PEP 8 with 79-char line length (rules: E, F, I, W)
 - Tests in `tests/` mirroring `src/` structure
 - Tests mock external dependencies (`internetarchive`, `requests`) via `unittest.mock.patch`
+- **Exception:** `tests/test_ia_client.py` hits the real Internet Archive API (no mocks) — these tests require network access and may be slow

@@ -5,7 +5,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from lomax import Lomax
+from lomax import Lomax, download_images
 
 DEFAULTS = {
     "output_dir": "lomax_output",
@@ -45,14 +45,14 @@ def main() -> None:
         "-o",
         "--output-dir",
         default=None,
-        help="directory to save downloaded images (default: lomax_output)",
+        help=("directory to save downloaded images (default: lomax_output)"),
     )
     parser.add_argument(
         "-n",
         "--max-results",
         type=int,
         default=None,
-        help="maximum number of items to download (default: 10)",
+        help=("maximum number of items to download (default: 10)"),
     )
     parser.add_argument(
         "-c",
@@ -74,15 +74,20 @@ def main() -> None:
         else config.get("max_results", DEFAULTS["max_results"])
     )
 
-    lx = Lomax(output_dir=output_dir, max_results=max_results)
-    results = lx.run(args.prompt)
+    lx = Lomax(max_results=max_results)
+    result = lx.search(args.prompt)
 
-    if not results:
+    if not result.images:
         print("No images found.")
         sys.exit(0)
 
-    for r in results:
-        print(f"{r.identifier}: {r.files_downloaded} file(s) -> {r.directory}")
+    print(
+        f"Found {result.total_images} image(s)"
+        f" across {result.total_items} item(s)."
+    )
+
+    paths = download_images(result, output_dir)
+    print(f"Downloaded {len(paths)} file(s) to {output_dir}/")
 
 
 if __name__ == "__main__":
