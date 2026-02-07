@@ -53,17 +53,18 @@ class Lomax:
         keywords = extract_keywords(prompt)
         per_keyword_limit = self.max_results * 2
 
-        candidates: list[list[SearchResult]] = []
-        for kw in keywords:
-            results = self._client.search([kw], max_results=per_keyword_limit)
-            candidates.append(results)
+        candidates: list[list[SearchResult]] = [
+            self._client.search([kw], max_results=per_keyword_limit)
+            for kw in keywords
+        ]
 
         selected = self._round_robin_sample(candidates)
 
-        images: list[ImageResult] = []
-        for sr in selected:
-            item_images = self._get_item_images(sr.identifier)
-            images.extend(item_images)
+        images: list[ImageResult] = [
+            img
+            for sr in selected
+            for img in self._get_item_images(sr.identifier)
+        ]
 
         return LomaxResult(
             prompt=prompt,
@@ -121,23 +122,19 @@ class Lomax:
             "publisher": item.metadata.get("publisher"),
         }
 
-        results: list[ImageResult] = []
-        for f in item.files:
-            if f.get("format") not in IMAGE_FORMATS:
-                continue
-            name = f["name"]
-            results.append(
-                ImageResult(
-                    identifier=identifier,
-                    filename=name,
-                    download_url=(
-                        f"https://archive.org/download/{identifier}/{name}"
-                    ),
-                    format=f["format"],
-                    size=int(f.get("size", 0)),
-                    md5=f.get("md5", ""),
-                    metadata=metadata,
-                )
+        return [
+            ImageResult(
+                identifier=identifier,
+                filename=f["name"],
+                download_url=(
+                    "https://archive.org/download"
+                    f"/{identifier}/{f['name']}"
+                ),
+                format=f["format"],
+                size=int(f.get("size", 0)),
+                md5=f.get("md5", ""),
+                metadata=metadata,
             )
-
-        return results
+            for f in item.files
+            if f.get("format") in IMAGE_FORMATS
+        ]

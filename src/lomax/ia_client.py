@@ -1,6 +1,7 @@
 """Internet Archive client for image retrieval."""
 
 from dataclasses import dataclass
+from itertools import islice
 
 import internetarchive as ia
 
@@ -88,18 +89,12 @@ class IAClient:
             List of SearchResult objects.
         """
         search = ia.search_items(query)
-        results: list[SearchResult] = []
-
-        for item in search:
-            if len(results) >= max_results:
-                break
-
-            result = SearchResult(
+        return [
+            SearchResult(
                 identifier=item.get("identifier", ""),
                 title=item.get("title", ""),
                 description=item.get("description"),
                 mediatype=item.get("mediatype"),
             )
-            results.append(result)
-
-        return results
+            for item in islice(search, max_results)
+        ]

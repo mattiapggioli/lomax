@@ -20,12 +20,13 @@ uv run python main.py "keywords"         # Run via main.py
 
 ## Architecture
 
-Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax import Lomax, LomaxResult, ImageResult, download_images`.
+Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax import Lomax, LomaxConfig, LomaxResult, ImageResult, download_images`.
 
 - `main.py` — CLI entry point. Calls `Lomax.search()` then `download_images()`. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults.
 - `lomax.toml` — TOML config file with a `[lomax]` section (`output_dir`, `max_results`). Loaded via stdlib `tomllib`.
 - `src/lomax/result.py` — Data structures: `ImageResult` (single image file with download URL, format, size, md5, item metadata dict) and `LomaxResult` (prompt, keywords, list of `ImageResult`, `to_dict()` for JSON serialization).
-- `src/lomax/lomax.py` — `Lomax` orchestrator: search-only pipeline (prompt → keywords → IA search → image filtering → `LomaxResult`). No filesystem side effects. Uses `IMAGE_FORMATS` set to filter IA files.
+- `src/lomax/config.py` — `LomaxConfig` dataclass with library-level defaults (`output_dir`, `max_results`). Used by `main.py` for layered config resolution.
+- `src/lomax/lomax.py` — `Lomax` orchestrator: scatter-gather search (prompt → keywords → per-keyword IA search → round-robin sampling with dedup → image filtering → `LomaxResult`). Uses `more_itertools.roundrobin` and `unique_everseen` for balanced results across keywords. No filesystem side effects. Uses `IMAGE_FORMATS` set to filter IA files.
 - `src/lomax/util.py` — `download_images(result, output_dir)`: downloads files from `ImageResult.download_url`, saves to `{output_dir}/{identifier}/{filename}`, writes `metadata.json` per item.
 - `src/lomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()`, returns `SearchResult` dataclasses. Builds IA queries by AND-joining keywords with a `mediatype` filter.
 - `src/lomax/semantic_bridge.py` — `extract_keywords()` converts prompts to keyword lists. Currently a simple comma-split placeholder; intended to be replaced with LLM-based extraction.
@@ -43,6 +44,7 @@ Follow TDD: write tests first, then implement, then run `uv run pytest`, then `u
 
 - Type hints on all function signatures
 - Docstrings on public functions and classes
+- Prefer list comprehensions over for-loop-append patterns when the result is clean and readable
 - Ruff enforces PEP 8 with 79-char line length (rules: E, F, I, W)
 - Tests in `tests/` mirroring `src/` structure
 - `test_lomax.py` mocks `internetarchive` only (no `requests` — search has no network/filesystem side effects)
