@@ -1,10 +1,12 @@
 """Lomax orchestrator: prompt → keywords → search → structured results."""
 
 import logging
+from itertools import islice
 
 import internetarchive as ia
+from more_itertools import roundrobin, unique_everseen
 
-from lomax.ia_client import IAClient
+from lomax.ia_client import IAClient, SearchResult
 from lomax.result import ImageResult, LomaxResult
 from lomax.semantic_bridge import extract_keywords
 
@@ -35,25 +37,31 @@ class Lomax:
     def search(self, prompt: str) -> LomaxResult:
         """Search the Internet Archive for images matching a prompt.
 
-        Runs the pipeline: prompt → keywords → IA search → image
-        filtering. Does not download any files.
+        Uses a scatter-gather strategy: searches each keyword
+        individually, then combines results via round-robin
+        sampling with deduplication.
 
         Args:
             prompt: Natural language prompt.
 
         Returns:
-            LomaxResult with all matching image files.
+            LomaxResult with balanced, de-duplicated image files.
 
         Raises:
             ValueError: If prompt is empty.
         """
         keywords = extract_keywords(prompt)
-        search_results = self._client.search(
-            keywords, max_results=self.max_results
-        )
+        per_keyword_limit = self.max_results * 2
+
+        candidates: list[list[SearchResult]] = []
+        for kw in keywords:
+            results = self._client.search([kw], max_results=per_keyword_limit)
+            candidates.append(results)
+
+        selected = self._round_robin_sample(candidates)
 
         images: list[ImageResult] = []
-        for sr in search_results:
+        for sr in selected:
             item_images = self._get_item_images(sr.identifier)
             images.extend(item_images)
 
@@ -62,6 +70,26 @@ class Lomax:
             keywords=keywords,
             images=images,
         )
+
+    def _round_robin_sample(
+        self,
+        candidates: list[list[SearchResult]],
+    ) -> list[SearchResult]:
+        """De-duplicating round-robin sample across keyword lists.
+
+        Interleaves candidate lists in round-robin order,
+        removes duplicates by identifier, and caps at
+        max_results.
+
+        Args:
+            candidates: Per-keyword lists of search results.
+
+        Returns:
+            Balanced, de-duplicated list of SearchResult.
+        """
+        stream = roundrobin(*candidates)
+        unique = unique_everseen(stream, key=lambda sr: sr.identifier)
+        return list(islice(unique, self.max_results))
 
     def _get_item_images(self, identifier: str) -> list[ImageResult]:
         """Fetch image file info for a single IA item.

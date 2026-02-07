@@ -79,44 +79,51 @@ class TestLomaxSearch:
         mock_extract: MagicMock,
         mock_ia: MagicMock,
     ) -> None:
-        """Test search() wires keywords -> IA search -> image filtering."""
+        """Test search() scatter-gathers per keyword."""
         mock_extract.return_value = ["jazz", "photo"]
 
-        sr = SearchResult(
+        sr_jazz = SearchResult(
             identifier="jazz-1",
             title="Jazz One",
             description="Desc",
             mediatype="image",
         )
+        sr_photo = SearchResult(
+            identifier="photo-1",
+            title="Photo One",
+            description="Desc",
+            mediatype="image",
+        )
 
-        item = _make_ia_item(
+        item_jazz = _make_ia_item(
             "jazz-1",
             files=[_make_ia_file("pic.jpg", "JPEG", "2048", "aaa")],
         )
-        mock_ia.get_item.return_value = item
+        item_photo = _make_ia_item(
+            "photo-1",
+            files=[_make_ia_file("shot.png", "PNG", "4096", "bbb")],
+        )
+        mock_ia.get_item.side_effect = lambda id: {
+            "jazz-1": item_jazz,
+            "photo-1": item_photo,
+        }[id]
 
-        lx = Lomax(max_results=1)
+        lx = Lomax(max_results=2)
         lx._client = MagicMock()
-        lx._client.search.return_value = [sr]
+        lx._client.search.side_effect = [[sr_jazz], [sr_photo]]
         result = lx.search("jazz, photo")
 
         mock_extract.assert_called_once_with("jazz, photo")
-        lx._client.search.assert_called_once_with(
-            ["jazz", "photo"], max_results=1
-        )
+        assert lx._client.search.call_count == 2
+        lx._client.search.assert_any_call(["jazz"], max_results=4)
+        lx._client.search.assert_any_call(["photo"], max_results=4)
         assert isinstance(result, LomaxResult)
         assert result.prompt == "jazz, photo"
         assert result.keywords == ["jazz", "photo"]
-        assert result.total_images == 1
-        assert result.total_items == 1
-        assert result.images[0].identifier == "jazz-1"
-        assert result.images[0].filename == "pic.jpg"
-        assert result.images[0].download_url == (
-            "https://archive.org/download/jazz-1/pic.jpg"
-        )
-        assert result.images[0].format == "JPEG"
-        assert result.images[0].size == 2048
-        assert result.images[0].md5 == "aaa"
+        assert result.total_items == 2
+        ids = {img.identifier for img in result.images}
+        assert "jazz-1" in ids
+        assert "photo-1" in ids
 
     @patch("lomax.lomax.extract_keywords")
     def test_search_empty_results(
@@ -334,6 +341,133 @@ class TestLomaxSearch:
         assert meta["licenseurl"] is None
         assert meta["rights"] is None
         assert meta["publisher"] is None
+
+
+class TestRoundRobinSample:
+    """Tests for the round-robin sampling algorithm."""
+
+    def test_balances_two_keyword_lists(self) -> None:
+        """Round-robin alternates items from each keyword list."""
+        lx = Lomax(max_results=4)
+        cats = [SearchResult(f"cat-{i}", f"Cat {i}") for i in range(3)]
+        dogs = [SearchResult(f"dog-{i}", f"Dog {i}") for i in range(3)]
+        result = lx._round_robin_sample([cats, dogs])
+        ids = [sr.identifier for sr in result]
+        assert ids == ["cat-0", "dog-0", "cat-1", "dog-1"]
+
+    def test_deduplicates_by_identifier(self) -> None:
+        """Duplicate identifiers across lists are skipped."""
+        lx = Lomax(max_results=4)
+        list_a = [
+            SearchResult("shared", "Shared"),
+            SearchResult("a-1", "A1"),
+        ]
+        list_b = [
+            SearchResult("shared", "Shared"),
+            SearchResult("b-1", "B1"),
+        ]
+        result = lx._round_robin_sample([list_a, list_b])
+        ids = [sr.identifier for sr in result]
+        # "shared" taken from list_a, duplicate from list_b
+        # dropped, then a-1 and b-1 interleaved
+        assert ids == ["shared", "a-1", "b-1"]
+
+    def test_exhausted_list_skipped(self) -> None:
+        """When one list runs out, items come from remaining lists."""
+        lx = Lomax(max_results=4)
+        short = [SearchResult("s-0", "S0")]
+        long = [SearchResult(f"l-{i}", f"L{i}") for i in range(5)]
+        result = lx._round_robin_sample([short, long])
+        assert len(result) == 4
+        ids = [sr.identifier for sr in result]
+        assert ids == ["s-0", "l-0", "l-1", "l-2"]
+
+    def test_stops_at_max_results(self) -> None:
+        """Sampling stops once max_results items are collected."""
+        lx = Lomax(max_results=2)
+        big = [SearchResult(f"x-{i}", f"X{i}") for i in range(10)]
+        result = lx._round_robin_sample([big])
+        assert len(result) == 2
+
+    def test_empty_candidates(self) -> None:
+        """Empty candidate list returns empty result."""
+        lx = Lomax(max_results=5)
+        result = lx._round_robin_sample([])
+        assert result == []
+
+    def test_all_lists_empty(self) -> None:
+        """All-empty candidate lists return empty result."""
+        lx = Lomax(max_results=5)
+        result = lx._round_robin_sample([[], []])
+        assert result == []
+
+    def test_all_duplicates_across_lists(self) -> None:
+        """When all items are duplicates, only unique ones kept."""
+        lx = Lomax(max_results=5)
+        list_a = [SearchResult("x", "X")]
+        list_b = [SearchResult("x", "X")]
+        result = lx._round_robin_sample([list_a, list_b])
+        assert len(result) == 1
+        assert result[0].identifier == "x"
+
+    def test_three_keyword_lists(self) -> None:
+        """Round-robin works across three keyword lists."""
+        lx = Lomax(max_results=6)
+        a = [SearchResult(f"a-{i}", f"A{i}") for i in range(3)]
+        b = [SearchResult(f"b-{i}", f"B{i}") for i in range(3)]
+        c = [SearchResult(f"c-{i}", f"C{i}") for i in range(3)]
+        result = lx._round_robin_sample([a, b, c])
+        ids = [sr.identifier for sr in result]
+        assert ids == ["a-0", "b-0", "c-0", "a-1", "b-1", "c-1"]
+
+
+class TestScatterGather:
+    """Tests for scatter-gather search integration."""
+
+    @patch("lomax.lomax.ia")
+    @patch("lomax.lomax.extract_keywords")
+    def test_per_keyword_limit_is_double(
+        self,
+        mock_extract: MagicMock,
+        mock_ia: MagicMock,
+    ) -> None:
+        """Each keyword search uses max_results * 2 as limit."""
+        mock_extract.return_value = ["a", "b"]
+
+        lx = Lomax(max_results=5)
+        lx._client = MagicMock()
+        lx._client.search.return_value = []
+        lx.search("a, b")
+
+        assert lx._client.search.call_count == 2
+        for call in lx._client.search.call_args_list:
+            _, kwargs = call
+            assert kwargs["max_results"] == 10
+
+    @patch("lomax.lomax.ia")
+    @patch("lomax.lomax.extract_keywords")
+    def test_single_keyword_searches_once(
+        self,
+        mock_extract: MagicMock,
+        mock_ia: MagicMock,
+    ) -> None:
+        """Single keyword degenerates to one search call."""
+        mock_extract.return_value = ["jazz"]
+
+        lx = Lomax(max_results=3)
+        lx._client = MagicMock()
+        lx._client.search.return_value = [
+            SearchResult("j-0", "J0"),
+            SearchResult("j-1", "J1"),
+        ]
+        mock_ia.get_item.side_effect = lambda id: _make_ia_item(
+            id, files=[_make_ia_file(f"{id}.jpg")]
+        )
+
+        result = lx.search("jazz")
+
+        lx._client.search.assert_called_once_with(["jazz"], max_results=6)
+        assert result.total_items == 2
 
 
 class TestLomaxResultToDict:

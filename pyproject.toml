@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "internetarchive",
+    "more-itertools>=10.8.0",
 ]
 
 [build-system]
