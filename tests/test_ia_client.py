@@ -48,6 +48,62 @@ class TestIAClient:
             assert result.identifier is not None
             assert result.title is not None
 
+    def test_search_with_or_operator(self) -> None:
+        """Test search with OR operator returns results."""
+        client = IAClient()
+        results = client.search(
+            ["jazz", "blues"], operator="OR", max_results=3
+        )
+        assert isinstance(results, list)
+
+    def test_search_with_and_operator(self) -> None:
+        """Test search with explicit AND operator returns results."""
+        client = IAClient()
+        results = client.search(
+            ["jazz", "photo"], operator="AND", max_results=3
+        )
+        assert isinstance(results, list)
+
+    def test_search_invalid_operator_raises_error(self) -> None:
+        """Test that an unsupported operator raises ValueError."""
+        client = IAClient()
+        with pytest.raises(ValueError, match="Unsupported operator"):
+            client.search(["jazz"], operator="XOR")
+
+
+class TestBuildQuery:
+    """Unit tests for IAClient._build_query()."""
+
+    def test_and_operator(self) -> None:
+        """Test _build_query with AND joins keywords with AND."""
+        client = IAClient()
+        query = client._build_query(["jazz", "photo"], "AND")
+        assert query == "(jazz AND photo) AND mediatype:image"
+
+    def test_or_operator(self) -> None:
+        """Test _build_query with OR joins keywords with OR."""
+        client = IAClient()
+        query = client._build_query(["jazz", "photo"], "OR")
+        assert query == "(jazz OR photo) AND mediatype:image"
+
+    def test_single_keyword(self) -> None:
+        """Test _build_query with a single keyword."""
+        client = IAClient()
+        query = client._build_query(["jazz"], "AND")
+        assert query == "(jazz) AND mediatype:image"
+
+    def test_custom_mediatype(self) -> None:
+        """Test _build_query respects custom mediatype."""
+        client = IAClient(mediatype="audio")
+        query = client._build_query(["jazz"], "OR")
+        assert query == "(jazz) AND mediatype:audio"
+
+    def test_default_operator_is_or(self) -> None:
+        """Test that search defaults to OR operator."""
+        client = IAClient()
+        query = client._build_query(["a", "b"], "OR")
+        assert " OR " in query
+
 
 class TestSearchResult:
     """Tests for SearchResult dataclass."""

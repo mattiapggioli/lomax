@@ -26,40 +26,53 @@ class IAClient:
         """
         self.mediatype = mediatype
 
+    VALID_OPERATORS = {"AND", "OR"}
+
     def search(
         self,
         keywords: list[str],
         max_results: int = 10,
+        operator: str = "AND",
     ) -> list[SearchResult]:
         """Search the Internet Archive for items matching the keywords.
 
         Args:
             keywords: List of keywords to search for.
-            max_results: Maximum number of results to return. Defaults to 10.
+            max_results: Maximum number of results to return.
+            operator: Logical operator to join keywords.
+                Must be "AND" or "OR". Defaults to "AND".
 
         Returns:
             List of SearchResult objects matching the query.
 
         Raises:
-            ValueError: If keywords list is empty.
+            ValueError: If keywords list is empty or operator
+                is unsupported.
         """
         if not keywords:
             raise ValueError("Keywords cannot be empty")
+        if operator not in self.VALID_OPERATORS:
+            raise ValueError(
+                f"Unsupported operator: {operator!r}."
+                f" Must be one of {self.VALID_OPERATORS}"
+            )
 
-        query = self._build_query(keywords)
+        query = self._build_query(keywords, operator)
         results = self._execute_search(query, max_results)
         return results
 
-    def _build_query(self, keywords: list[str]) -> str:
+    def _build_query(self, keywords: list[str], operator: str) -> str:
         """Build an Internet Archive search query from keywords.
 
         Args:
             keywords: List of keywords to include in the query.
+            operator: Logical operator ("AND" or "OR") to join
+                keywords.
 
         Returns:
             Formatted query string for the IA search API.
         """
-        keyword_query = " AND ".join(keywords)
+        keyword_query = f" {operator} ".join(keywords)
         return f"({keyword_query}) AND mediatype:{self.mediatype}"
 
     def _execute_search(
