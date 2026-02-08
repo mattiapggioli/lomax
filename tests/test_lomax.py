@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lomax.ia_client import SearchResult
+from lomax.ia_client import MainCollection, SearchResult
 from lomax.lomax import Lomax
 from lomax.result import ImageResult, LomaxResult
 
@@ -68,6 +68,72 @@ class TestLomaxInit:
         lx = Lomax(max_results=5)
         assert lx.max_results == 5
 
+    def test_stores_search_params(self) -> None:
+        """Test Lomax stores collections, commercial_use, etc."""
+        lx = Lomax(
+            collections=["nasa", "smithsonian"],
+            commercial_use=True,
+            operator="OR",
+            filters={"year": "2020"},
+        )
+        assert lx.collections == [
+            MainCollection.NASA,
+            MainCollection.SMITHSONIAN,
+        ]
+        assert lx.commercial_use is True
+        assert lx.operator == "OR"
+        assert lx.filters == {"year": "2020"}
+
+    def test_default_search_params(self) -> None:
+        """Test Lomax defaults for new search params."""
+        lx = Lomax()
+        assert lx.collections is None
+        assert lx.commercial_use is False
+        assert lx.operator == "AND"
+        assert lx.filters is None
+
+    def test_invalid_collection_raises(self) -> None:
+        """Test Lomax raises ValueError for unknown collection."""
+        with pytest.raises(ValueError, match="Unknown collection: 'bogus'"):
+            Lomax(collections=["bogus"])
+
+
+class TestLomaxSearchPassthrough:
+    """Tests that Lomax.search() forwards params to IAClient."""
+
+    @patch("lomax.lomax.ia")
+    @patch("lomax.lomax.extract_keywords")
+    def test_forwards_custom_params(
+        self,
+        mock_extract: MagicMock,
+        mock_ia: MagicMock,
+    ) -> None:
+        """Test search() passes stored params to IAClient."""
+        mock_extract.return_value = ["test"]
+        mock_ia.get_item.side_effect = lambda id: _make_ia_item(
+            id, files=[_make_ia_file(f"{id}.jpg")]
+        )
+
+        lx = Lomax(
+            max_results=3,
+            collections=["nasa"],
+            commercial_use=True,
+            operator="OR",
+            filters={"year": "2020"},
+        )
+        lx._client = MagicMock()
+        lx._client.search.return_value = [SearchResult("t-1", "T1")]
+        lx.search("test")
+
+        lx._client.search.assert_called_once_with(
+            ["test"],
+            max_results=6,
+            collections=[MainCollection.NASA],
+            commercial_use=True,
+            operator="OR",
+            filters={"year": "2020"},
+        )
+
 
 class TestLomaxSearch:
     """Tests for Lomax.search() pipeline."""
@@ -115,8 +181,22 @@ class TestLomaxSearch:
 
         mock_extract.assert_called_once_with("jazz, photo")
         assert lx._client.search.call_count == 2
-        lx._client.search.assert_any_call(["jazz"], max_results=4)
-        lx._client.search.assert_any_call(["photo"], max_results=4)
+        lx._client.search.assert_any_call(
+            ["jazz"],
+            max_results=4,
+            collections=None,
+            commercial_use=False,
+            operator="AND",
+            filters=None,
+        )
+        lx._client.search.assert_any_call(
+            ["photo"],
+            max_results=4,
+            collections=None,
+            commercial_use=False,
+            operator="AND",
+            filters=None,
+        )
         assert isinstance(result, LomaxResult)
         assert result.prompt == "jazz, photo"
         assert result.keywords == ["jazz", "photo"]
@@ -462,9 +542,13 @@ class TestScatterGather:
         lx.search("a, b")
 
         assert lx._client.search.call_count == 2
-        for call in lx._client.search.call_args_list:
-            _, kwargs = call
+        for call_args in lx._client.search.call_args_list:
+            _, kwargs = call_args
             assert kwargs["max_results"] == 10
+            assert kwargs["collections"] is None
+            assert kwargs["commercial_use"] is False
+            assert kwargs["operator"] == "AND"
+            assert kwargs["filters"] is None
 
     @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
@@ -488,7 +572,14 @@ class TestScatterGather:
 
         result = lx.search("jazz")
 
-        lx._client.search.assert_called_once_with(["jazz"], max_results=6)
+        lx._client.search.assert_called_once_with(
+            ["jazz"],
+            max_results=6,
+            collections=None,
+            commercial_use=False,
+            operator="AND",
+            filters=None,
+        )
         assert result.total_items == 2
 
 

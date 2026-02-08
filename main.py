@@ -27,10 +27,43 @@ def load_toml(path: Path) -> dict:
     return data.get("lomax", {})
 
 
+def parse_filters(
+    raw: list[str] | None,
+) -> dict[str, str | list[str]] | None:
+    """Parse repeatable key=value filter strings into a dict.
+
+    Duplicate keys are merged into a list.
+
+    Args:
+        raw: List of "key=value" strings, or None.
+
+    Returns:
+        Dict mapping field names to values, or None.
+    """
+    if not raw:
+        return None
+    result: dict[str, str | list[str]] = {}
+    for item in raw:
+        key, _, value = item.partition("=")
+        if key in result:
+            existing = result[key]
+            if isinstance(existing, list):
+                existing.append(value)
+            else:
+                result[key] = [existing, value]
+        else:
+            result[key] = value
+    return result
+
+
 def build_config(
     toml_values: dict,
     cli_output_dir: str | None,
     cli_max_results: int | None,
+    cli_collections: list[str] | None = None,
+    cli_commercial_use: bool | None = None,
+    cli_operator: str | None = None,
+    cli_filters: dict[str, str | list[str]] | None = None,
 ) -> LomaxConfig:
     """Build a LomaxConfig with layered overrides.
 
@@ -40,6 +73,10 @@ def build_config(
         toml_values: Values loaded from the TOML config file.
         cli_output_dir: Output dir from CLI, or None if not given.
         cli_max_results: Max results from CLI, or None if not given.
+        cli_collections: Collections from CLI, or None if not given.
+        cli_commercial_use: Commercial use flag from CLI, or None.
+        cli_operator: Keyword operator from CLI, or None if not given.
+        cli_filters: Filters from CLI, or None if not given.
 
     Returns:
         Fully resolved LomaxConfig.
@@ -51,12 +88,28 @@ def build_config(
         config.output_dir = toml_values["output_dir"]
     if "max_results" in toml_values:
         config.max_results = toml_values["max_results"]
+    if "collections" in toml_values:
+        config.collections = toml_values["collections"]
+    if "commercial_use" in toml_values:
+        config.commercial_use = toml_values["commercial_use"]
+    if "operator" in toml_values:
+        config.operator = toml_values["operator"]
+    if "filters" in toml_values:
+        config.filters = toml_values["filters"]
 
     # Layer 3: CLI overrides TOML
     if cli_output_dir is not None:
         config.output_dir = cli_output_dir
     if cli_max_results is not None:
         config.max_results = cli_max_results
+    if cli_collections is not None:
+        config.collections = cli_collections
+    if cli_commercial_use is not None:
+        config.commercial_use = cli_commercial_use
+    if cli_operator is not None:
+        config.operator = cli_operator
+    if cli_filters is not None:
+        config.filters = cli_filters
 
     return config
 
@@ -89,6 +142,34 @@ def main() -> None:
         default=None,
         help=(f"path to config file (default: {DEFAULT_CONFIG_PATH})"),
     )
+    parser.add_argument(
+        "--collections",
+        nargs="+",
+        default=None,
+        help="restrict to these IA collections",
+    )
+    parser.add_argument(
+        "--commercial-use",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="restrict to commercial-use licenses",
+    )
+    parser.add_argument(
+        "--operator",
+        choices=["AND", "OR"],
+        default=None,
+        help='keyword join operator (default: "AND")',
+    )
+    parser.add_argument(
+        "--filter",
+        action="append",
+        dest="filters",
+        default=None,
+        help=(
+            "IA field filter as key=value"
+            " (repeatable, e.g. --filter year=2020)"
+        ),
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config) if args.config else DEFAULT_CONFIG_PATH
@@ -98,9 +179,19 @@ def main() -> None:
         toml_values,
         cli_output_dir=args.output_dir,
         cli_max_results=args.max_results,
+        cli_collections=args.collections,
+        cli_commercial_use=args.commercial_use,
+        cli_operator=args.operator,
+        cli_filters=parse_filters(args.filters),
     )
 
-    lx = Lomax(max_results=config.max_results)
+    lx = Lomax(
+        max_results=config.max_results,
+        collections=config.collections,
+        commercial_use=config.commercial_use,
+        operator=config.operator,
+        filters=config.filters,
+    )
     result = lx.search(args.prompt)
 
     if not result.images:

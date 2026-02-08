@@ -6,7 +6,7 @@ from itertools import islice
 import internetarchive as ia
 from more_itertools import roundrobin, unique_everseen
 
-from lomax.ia_client import IAClient, SearchResult
+from lomax.ia_client import IAClient, MainCollection, SearchResult
 from lomax.result import ImageResult, LomaxResult
 from lomax.semantic_bridge import extract_keywords
 
@@ -25,16 +25,64 @@ IMAGE_FORMATS = {
 class Lomax:
     """Orchestrates prompt → keywords → search → image results."""
 
-    def __init__(self, max_results: int = 10) -> None:
+    def __init__(
+        self,
+        max_results: int = 10,
+        collections: list[str] | None = None,
+        commercial_use: bool = False,
+        operator: str = "AND",
+        filters: dict[str, str | list[str]] | None = None,
+    ) -> None:
         """Initialize the Lomax orchestrator.
 
         Args:
             max_results: Default maximum number of search results.
+            collections: Restrict searches to these IA collections.
+            commercial_use: If True, restrict to commercial-use
+                licenses.
+            operator: Logical operator ("AND" or "OR") for keywords.
+            filters: Arbitrary IA field filters.
+
+        Raises:
+            ValueError: If a collection name is not a valid
+                MainCollection value.
         """
         self.max_results = max_results
+        self.collections = self._validate_collections(collections)
+        self.commercial_use = commercial_use
+        self.operator = operator
+        self.filters = filters
         self._client = IAClient()
 
-    def search(self, prompt: str, max_results: int | None = None) -> LomaxResult:
+    @staticmethod
+    def _validate_collections(
+        names: list[str] | None,
+    ) -> list[MainCollection] | None:
+        """Convert collection name strings to MainCollection enums.
+
+        Args:
+            names: Collection name strings, or None.
+
+        Returns:
+            List of MainCollection enums, or None.
+
+        Raises:
+            ValueError: If a name is not a valid MainCollection value.
+        """
+        if names is None:
+            return None
+        valid = {m.value for m in MainCollection}
+        for name in names:
+            if name not in valid:
+                raise ValueError(
+                    f"Unknown collection: {name!r}."
+                    f" Valid collections: {sorted(valid)}"
+                )
+        return [MainCollection(n) for n in names]
+
+    def search(
+        self, prompt: str, max_results: int | None = None
+    ) -> LomaxResult:
         """Search the Internet Archive for images matching a prompt.
 
         Uses a scatter-gather strategy: searches each keyword
@@ -57,7 +105,14 @@ class Lomax:
         per_keyword_limit = limit * 2
 
         candidates: list[list[SearchResult]] = [
-            self._client.search([kw], max_results=per_keyword_limit)
+            self._client.search(
+                [kw],
+                max_results=per_keyword_limit,
+                collections=self.collections,
+                commercial_use=self.commercial_use,
+                operator=self.operator,
+                filters=self.filters,
+            )
             for kw in keywords
         ]
 

@@ -20,15 +20,15 @@ uv run python main.py "keywords"         # Run via main.py
 
 ## Architecture
 
-Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax import Lomax, LomaxConfig, LomaxResult, ImageResult, download_images`.
+Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax import Lomax, LomaxConfig, LomaxResult, ImageResult, MainCollection, download_images`.
 
-- `main.py` — CLI entry point. Calls `Lomax.search()` then `download_images()`. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults.
-- `lomax.toml` — TOML config file with a `[lomax]` section (`output_dir`, `max_results`). Loaded via stdlib `tomllib`.
+- `main.py` — CLI entry point. Calls `Lomax.search()` then `download_images()`. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults. CLI supports `--collections`, `--commercial-use`/`--no-commercial-use`, `--operator`, and `--filter` flags. `parse_filters()` converts repeatable `key=value` strings into a dict.
+- `lomax.toml` — TOML config file with a `[lomax]` section (`output_dir`, `max_results`, `collections`, `commercial_use`, `filters`). Loaded via stdlib `tomllib`.
 - `src/lomax/result.py` — Data structures: `ImageResult` (single image file with download URL, format, size, md5, item metadata dict) and `LomaxResult` (prompt, keywords, list of `ImageResult`, `to_dict()` for JSON serialization).
-- `src/lomax/config.py` — `LomaxConfig` dataclass with library-level defaults (`output_dir`, `max_results`). Used by `main.py` for layered config resolution.
-- `src/lomax/lomax.py` — `Lomax` orchestrator: scatter-gather search (prompt → keywords → per-keyword IA search → round-robin sampling with dedup → image filtering → `LomaxResult`). Uses `more_itertools.roundrobin` and `unique_everseen` for balanced results across keywords. No filesystem side effects. Uses `IMAGE_FORMATS` set to filter IA files.
+- `src/lomax/config.py` — `LomaxConfig` dataclass with library-level defaults (`output_dir`, `max_results`, `collections`, `commercial_use`, `operator`, `filters`). Used by `main.py` for layered config resolution.
+- `src/lomax/lomax.py` — `Lomax` orchestrator: scatter-gather search (prompt → keywords → per-keyword IA search → round-robin sampling with dedup → image filtering → `LomaxResult`). `__init__()` accepts `max_results`, `collections`, `commercial_use`, `operator`, `filters` and forwards them to `IAClient.search()`. `search()` accepts an optional `max_results` override. Uses `more_itertools.roundrobin` and `unique_everseen` for balanced results across keywords. No filesystem side effects. Uses `IMAGE_FORMATS` set to filter IA files.
 - `src/lomax/util.py` — `download_images(result, output_dir)`: downloads files from `ImageResult.download_url`, saves to `{output_dir}/{identifier}/{filename}`, writes `metadata.json` per item.
-- `src/lomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()`, returns `SearchResult` dataclasses. Builds IA queries by AND-joining keywords with a `mediatype` filter.
+- `src/lomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()`, returns `SearchResult` dataclasses. `MainCollection` StrEnum provides well-known IA image collections (NASA, Smithsonian, Flickr Commons, etc.). `IAClient.search()` supports hybrid filtering: `collections` (restrict to specific IA collections), `commercial_use` (restrict to CC-compatible licenses via `COMMERCIAL_USE_LICENSES` set), `filters` (arbitrary IA field filters), and `operator` ("AND"/"OR" keyword joining).
 - `src/lomax/semantic_bridge.py` — `extract_keywords()` converts prompts to keyword lists. Currently a simple comma-split placeholder; intended to be replaced with LLM-based extraction.
 
 ## Development Workflow

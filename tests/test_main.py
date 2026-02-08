@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from lomax.config import LomaxConfig
-from main import build_config, load_toml
+from main import build_config, load_toml, parse_filters
 
 
 class TestLoadToml:
@@ -98,3 +98,96 @@ class TestBuildConfig:
         """build_config returns a LomaxConfig instance."""
         config = build_config({}, None, None)
         assert isinstance(config, LomaxConfig)
+
+    def test_defaults_include_new_fields(self) -> None:
+        """No TOML, no CLI → library defaults for new fields."""
+        config = build_config({}, None, None)
+        assert config.collections is None
+        assert config.commercial_use is False
+        assert config.operator == "AND"
+        assert config.filters is None
+
+    def test_toml_overrides_new_fields(self) -> None:
+        """TOML values override library defaults for new fields."""
+        toml = {
+            "collections": ["nasa", "smithsonian"],
+            "commercial_use": True,
+            "operator": "OR",
+            "filters": {"year": "2020"},
+        }
+        config = build_config(toml, None, None)
+        assert config.collections == ["nasa", "smithsonian"]
+        assert config.commercial_use is True
+        assert config.operator == "OR"
+        assert config.filters == {"year": "2020"}
+
+    def test_cli_overrides_new_fields(self) -> None:
+        """CLI values override TOML for new fields."""
+        toml = {
+            "collections": ["nasa"],
+            "commercial_use": True,
+            "operator": "OR",
+            "filters": {"year": "2020"},
+        }
+        config = build_config(
+            toml,
+            None,
+            None,
+            cli_collections=["flickr-commons"],
+            cli_commercial_use=False,
+            cli_operator="AND",
+            cli_filters={"creator": "NASA"},
+        )
+        assert config.collections == ["flickr-commons"]
+        assert config.commercial_use is False
+        assert config.operator == "AND"
+        assert config.filters == {"creator": "NASA"}
+
+    def test_partial_cli_new_fields(self) -> None:
+        """CLI overrides only the new fields provided."""
+        toml = {
+            "collections": ["nasa"],
+            "commercial_use": True,
+        }
+        config = build_config(
+            toml,
+            None,
+            None,
+            cli_collections=None,
+            cli_commercial_use=None,
+            cli_operator="OR",
+        )
+        assert config.collections == ["nasa"]
+        assert config.commercial_use is True
+        assert config.operator == "OR"
+        assert config.filters is None
+
+
+class TestParseFilters:
+    """Tests for parse_filters() helper."""
+
+    def test_none_input(self) -> None:
+        """None input returns None."""
+        assert parse_filters(None) is None
+
+    def test_empty_list(self) -> None:
+        """Empty list returns None."""
+        assert parse_filters([]) is None
+
+    def test_single_values(self) -> None:
+        """Single key=value pairs produce string values."""
+        result = parse_filters(["year=2020", "creator=NASA"])
+        assert result == {"year": "2020", "creator": "NASA"}
+
+    def test_duplicate_keys_merge(self) -> None:
+        """Duplicate keys are merged into a list."""
+        result = parse_filters(["subject=jazz", "subject=photo", "year=2020"])
+        assert result == {
+            "subject": ["jazz", "photo"],
+            "year": "2020",
+        }
+
+    def test_triple_duplicate_keys(self) -> None:
+        """Three duplicate keys produce a three-element list."""
+        result = parse_filters(["tag=a", "tag=b", "tag=c"])
+        assert result == {"tag": ["a", "b", "c"]}

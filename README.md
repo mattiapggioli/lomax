@@ -46,6 +46,42 @@ data = result.to_dict()
 paths = download_images(result, "my_images")
 ```
 
+### CLI options
+
+```bash
+uv run python main.py "jazz, musicians" \
+  --collections nasa smithsonian \
+  --commercial-use \
+  --operator OR \
+  --filter year=2020 \
+  --filter creator=NASA
+```
+
+| Flag | Description |
+|---|---|
+| `--collections` | Restrict to these IA collections (space-separated) |
+| `--commercial-use` / `--no-commercial-use` | Restrict to commercial-use-compatible licenses |
+| `--operator AND\|OR` | Logical operator for joining keywords (default: AND) |
+| `--filter key=value` | Arbitrary IA field filter (repeatable) |
+
+### Configuration file
+
+`lomax.toml` supports all search parameters:
+
+```toml
+[lomax]
+output_dir = "~/data/lomax"
+max_results = 10
+# collections = ["nasa", "smithsonian"]
+# commercial_use = false
+
+# [lomax.filters]
+# year = "2020"
+# date = "[1950-01-01 TO 1959-12-31]"
+```
+
+Priority: CLI args > `lomax.toml` > library defaults.
+
 ## Output structure
 
 ```
