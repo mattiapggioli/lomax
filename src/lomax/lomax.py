@@ -127,8 +127,7 @@ class Lomax:
                 identifier=identifier,
                 filename=f["name"],
                 download_url=(
-                    "https://archive.org/download"
-                    f"/{identifier}/{f['name']}"
+                    f"https://archive.org/download/{identifier}/{f['name']}"
                 ),
                 format=f["format"],
                 size=int(f.get("size", 0)),

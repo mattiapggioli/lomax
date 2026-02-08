@@ -2,7 +2,12 @@
 
 import pytest
 
-from lomax.ia_client import IAClient, SearchResult
+from lomax.ia_client import (
+    COMMERCIAL_USE_LICENSES,
+    IAClient,
+    MainCollection,
+    SearchResult,
+)
 
 
 class TestIAClient:
@@ -70,6 +75,36 @@ class TestIAClient:
         with pytest.raises(ValueError, match="Unsupported operator"):
             client.search(["jazz"], operator="XOR")
 
+    def test_search_with_collection_filter(self) -> None:
+        """Test search filtered to a specific collection."""
+        client = IAClient()
+        results = client.search(
+            ["space"],
+            max_results=3,
+            collections=[MainCollection.NASA],
+        )
+        assert isinstance(results, list)
+
+    def test_search_with_commercial_use(self) -> None:
+        """Test search with commercial_use filter."""
+        client = IAClient()
+        results = client.search(
+            ["nature"],
+            max_results=3,
+            commercial_use=True,
+        )
+        assert isinstance(results, list)
+
+    def test_search_with_generic_filter(self) -> None:
+        """Test search with a generic filter dict."""
+        client = IAClient()
+        results = client.search(
+            ["portrait"],
+            max_results=3,
+            filters={"year": "2020"},
+        )
+        assert isinstance(results, list)
+
 
 class TestBuildQuery:
     """Unit tests for IAClient._build_query()."""
@@ -104,6 +139,36 @@ class TestBuildQuery:
         query = client._build_query(["a", "b"], "OR")
         assert " OR " in query
 
+    def test_with_filter_clauses(self) -> None:
+        """Test _build_query appends filter clauses."""
+        client = IAClient()
+        query = client._build_query(["jazz"], "AND", ["collection:(nasa)"])
+        assert query == ("(jazz) AND mediatype:image AND collection:(nasa)")
+
+    def test_with_multiple_filter_clauses(self) -> None:
+        """Test _build_query with multiple filter clauses."""
+        client = IAClient()
+        query = client._build_query(
+            ["jazz"],
+            "AND",
+            ["collection:(nasa)", "year:2020"],
+        )
+        assert query == (
+            "(jazz) AND mediatype:image AND collection:(nasa) AND year:2020"
+        )
+
+    def test_with_none_filter_clauses(self) -> None:
+        """Test backward compat: None filter_clauses."""
+        client = IAClient()
+        query = client._build_query(["jazz"], "AND", None)
+        assert query == "(jazz) AND mediatype:image"
+
+    def test_with_empty_filter_clauses(self) -> None:
+        """Test backward compat: empty filter_clauses."""
+        client = IAClient()
+        query = client._build_query(["jazz"], "AND", [])
+        assert query == "(jazz) AND mediatype:image"
+
 
 class TestSearchResult:
     """Tests for SearchResult dataclass."""
@@ -129,3 +194,117 @@ class TestSearchResult:
         )
         assert result.description is None
         assert result.mediatype is None
+
+
+class TestMainCollection:
+    """Tests for MainCollection StrEnum."""
+
+    def test_values_are_strings(self) -> None:
+        """Test that enum values behave as strings."""
+        assert MainCollection.NASA == "nasa"
+        assert isinstance(MainCollection.NASA, str)
+
+    def test_expected_members_exist(self) -> None:
+        """Test that all expected members are present."""
+        expected = {
+            "NASA",
+            "PRELINGER_ARCHIVES",
+            "SMITHSONIAN",
+            "METROPOLITAN_MUSEUM",
+            "FLICKR_COMMONS",
+            "LIBRARY_OF_CONGRESS",
+        }
+        assert set(MainCollection.__members__) == expected
+
+
+class TestBuildFilterClauses:
+    """Unit tests for IAClient._build_filter_clauses()."""
+
+    def test_no_filters_returns_empty(self) -> None:
+        """Test that no filters produces an empty list."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(None, False, None)
+        assert clauses == []
+
+    def test_single_collection(self) -> None:
+        """Test filtering by a single collection."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            [MainCollection.NASA], False, None
+        )
+        assert clauses == ["collection:(nasa)"]
+
+    def test_multiple_collections(self) -> None:
+        """Test filtering by multiple collections."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            [MainCollection.NASA, MainCollection.SMITHSONIAN],
+            False,
+            None,
+        )
+        assert clauses == ["collection:(nasa OR smithsonian)"]
+
+    def test_commercial_use(self) -> None:
+        """Test commercial_use produces licenseurl clause."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(None, True, None)
+        assert len(clauses) == 1
+        clause = clauses[0]
+        assert clause.startswith("licenseurl:(")
+        for url in COMMERCIAL_USE_LICENSES:
+            assert f'"{url}"' in clause
+
+    def test_generic_filter_string_value(self) -> None:
+        """Test generic filter with a string value."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            None, False, {"creator": "NASA"}
+        )
+        assert clauses == ["creator:NASA"]
+
+    def test_generic_filter_list_value(self) -> None:
+        """Test generic filter with a list value."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            None, False, {"year": ["2020", "2021"]}
+        )
+        assert clauses == ["year:(2020 OR 2021)"]
+
+    def test_shortcut_overrides_generic_collection(
+        self,
+    ) -> None:
+        """Test that collections shortcut overrides generic."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            [MainCollection.NASA],
+            False,
+            {"collection": "other"},
+        )
+        assert len(clauses) == 1
+        assert clauses[0] == "collection:(nasa)"
+
+    def test_shortcut_overrides_generic_licenseurl(
+        self,
+    ) -> None:
+        """Test that commercial_use overrides generic."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            None,
+            True,
+            {"licenseurl": "http://example.com"},
+        )
+        assert len(clauses) == 1
+        assert clauses[0].startswith("licenseurl:(")
+
+    def test_combined_shortcuts_and_generic(self) -> None:
+        """Test shortcuts and generic filters combined."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            [MainCollection.NASA],
+            True,
+            {"year": "2020"},
+        )
+        assert len(clauses) == 3
+        assert clauses[0] == "collection:(nasa)"
+        assert clauses[1].startswith("licenseurl:(")
+        assert clauses[2] == "year:2020"

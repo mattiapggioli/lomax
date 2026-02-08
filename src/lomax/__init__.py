@@ -1,6 +1,7 @@
 """Lomax - Image retrieval from Internet Archive."""
 
 from lomax.config import LomaxConfig
+from lomax.ia_client import MainCollection
 from lomax.lomax import Lomax
 from lomax.result import ImageResult, LomaxResult
 from lomax.util import download_images
@@ -12,5 +13,6 @@ __all__ = [
     "Lomax",
     "LomaxConfig",
     "LomaxResult",
+    "MainCollection",
     "download_images",
 ]
