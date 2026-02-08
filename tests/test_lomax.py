@@ -125,6 +125,28 @@ class TestLomaxSearch:
         assert "jazz-1" in ids
         assert "photo-1" in ids
 
+    @patch("lomax.lomax.ia")
+    @patch("lomax.lomax.extract_keywords")
+    def test_search_max_results_override(
+        self,
+        mock_extract: MagicMock,
+        mock_ia: MagicMock,
+    ) -> None:
+        """Test that max_results in search() overrides the default."""
+        mock_extract.return_value = ["test"]
+        search_results = [SearchResult(f"id-{i}", f"T{i}") for i in range(10)]
+        mock_ia.get_item.side_effect = lambda id: _make_ia_item(
+            id, files=[_make_ia_file(f"{id}.jpg")]
+        )
+
+        # Default is 10, but we will override with 3
+        lx = Lomax(max_results=10)
+        lx._client = MagicMock()
+        lx._client.search.return_value = search_results
+
+        result = lx.search("test", max_results=3)
+        assert result.total_items == 3
+
     @patch("lomax.lomax.extract_keywords")
     def test_search_empty_results(
         self,
@@ -351,7 +373,7 @@ class TestRoundRobinSample:
         lx = Lomax(max_results=4)
         cats = [SearchResult(f"cat-{i}", f"Cat {i}") for i in range(3)]
         dogs = [SearchResult(f"dog-{i}", f"Dog {i}") for i in range(3)]
-        result = lx._round_robin_sample([cats, dogs])
+        result = lx._round_robin_sample([cats, dogs], limit=lx.max_results)
         ids = [sr.identifier for sr in result]
         assert ids == ["cat-0", "dog-0", "cat-1", "dog-1"]
 
@@ -366,7 +388,7 @@ class TestRoundRobinSample:
             SearchResult("shared", "Shared"),
             SearchResult("b-1", "B1"),
         ]
-        result = lx._round_robin_sample([list_a, list_b])
+        result = lx._round_robin_sample([list_a, list_b], limit=lx.max_results)
         ids = [sr.identifier for sr in result]
         # "shared" taken from list_a, duplicate from list_b
         # dropped, then a-1 and b-1 interleaved
@@ -377,7 +399,7 @@ class TestRoundRobinSample:
         lx = Lomax(max_results=4)
         short = [SearchResult("s-0", "S0")]
         long = [SearchResult(f"l-{i}", f"L{i}") for i in range(5)]
-        result = lx._round_robin_sample([short, long])
+        result = lx._round_robin_sample([short, long], limit=lx.max_results)
         assert len(result) == 4
         ids = [sr.identifier for sr in result]
         assert ids == ["s-0", "l-0", "l-1", "l-2"]
@@ -386,19 +408,19 @@ class TestRoundRobinSample:
         """Sampling stops once max_results items are collected."""
         lx = Lomax(max_results=2)
         big = [SearchResult(f"x-{i}", f"X{i}") for i in range(10)]
-        result = lx._round_robin_sample([big])
+        result = lx._round_robin_sample([big], limit=lx.max_results)
         assert len(result) == 2
 
     def test_empty_candidates(self) -> None:
         """Empty candidate list returns empty result."""
         lx = Lomax(max_results=5)
-        result = lx._round_robin_sample([])
+        result = lx._round_robin_sample([], limit=lx.max_results)
         assert result == []
 
     def test_all_lists_empty(self) -> None:
         """All-empty candidate lists return empty result."""
         lx = Lomax(max_results=5)
-        result = lx._round_robin_sample([[], []])
+        result = lx._round_robin_sample([[], []], limit=lx.max_results)
         assert result == []
 
     def test_all_duplicates_across_lists(self) -> None:
@@ -406,7 +428,7 @@ class TestRoundRobinSample:
         lx = Lomax(max_results=5)
         list_a = [SearchResult("x", "X")]
         list_b = [SearchResult("x", "X")]
-        result = lx._round_robin_sample([list_a, list_b])
+        result = lx._round_robin_sample([list_a, list_b], limit=lx.max_results)
         assert len(result) == 1
         assert result[0].identifier == "x"
 
@@ -416,7 +438,7 @@ class TestRoundRobinSample:
         a = [SearchResult(f"a-{i}", f"A{i}") for i in range(3)]
         b = [SearchResult(f"b-{i}", f"B{i}") for i in range(3)]
         c = [SearchResult(f"c-{i}", f"C{i}") for i in range(3)]
-        result = lx._round_robin_sample([a, b, c])
+        result = lx._round_robin_sample([a, b, c], limit=lx.max_results)
         ids = [sr.identifier for sr in result]
         assert ids == ["a-0", "b-0", "c-0", "a-1", "b-1", "c-1"]
 

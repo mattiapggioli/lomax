@@ -29,12 +29,12 @@ class Lomax:
         """Initialize the Lomax orchestrator.
 
         Args:
-            max_results: Maximum number of search results.
+            max_results: Default maximum number of search results.
         """
         self.max_results = max_results
         self._client = IAClient()
 
-    def search(self, prompt: str) -> LomaxResult:
+    def search(self, prompt: str, max_results: int | None = None) -> LomaxResult:
         """Search the Internet Archive for images matching a prompt.
 
         Uses a scatter-gather strategy: searches each keyword
@@ -43,6 +43,8 @@ class Lomax:
 
         Args:
             prompt: Natural language prompt.
+            max_results: Override for the maximum number of results.
+                If None, the default from initialization is used.
 
         Returns:
             LomaxResult with balanced, de-duplicated image files.
@@ -51,14 +53,15 @@ class Lomax:
             ValueError: If prompt is empty.
         """
         keywords = extract_keywords(prompt)
-        per_keyword_limit = self.max_results * 2
+        limit = max_results if max_results is not None else self.max_results
+        per_keyword_limit = limit * 2
 
         candidates: list[list[SearchResult]] = [
             self._client.search([kw], max_results=per_keyword_limit)
             for kw in keywords
         ]
 
-        selected = self._round_robin_sample(candidates)
+        selected = self._round_robin_sample(candidates, limit=limit)
 
         images: list[ImageResult] = [
             img
@@ -75,22 +78,24 @@ class Lomax:
     def _round_robin_sample(
         self,
         candidates: list[list[SearchResult]],
+        limit: int,
     ) -> list[SearchResult]:
         """De-duplicating round-robin sample across keyword lists.
 
         Interleaves candidate lists in round-robin order,
-        removes duplicates by identifier, and caps at
-        max_results.
+        removes duplicates by identifier, and caps at the
+        specified limit.
 
         Args:
             candidates: Per-keyword lists of search results.
+            limit: The maximum number of results to return.
 
         Returns:
             Balanced, de-duplicated list of SearchResult.
         """
         stream = roundrobin(*candidates)
         unique = unique_everseen(stream, key=lambda sr: sr.identifier)
-        return list(islice(unique, self.max_results))
+        return list(islice(unique, limit))
 
     def _get_item_images(self, identifier: str) -> list[ImageResult]:
         """Fetch image file info for a single IA item.
