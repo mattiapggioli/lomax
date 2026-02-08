@@ -24,7 +24,7 @@ def download_images(result: LomaxResult, output_dir: str | Path) -> list[Path]:
     Returns:
         List of Paths to successfully downloaded files.
     """
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir).expanduser()
     downloaded: list[Path] = []
 
     by_identifier: dict[str, list[ImageResult]] = {}
