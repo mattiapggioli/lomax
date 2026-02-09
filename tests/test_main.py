@@ -104,7 +104,6 @@ class TestBuildConfig:
         config = build_config({}, None, None)
         assert config.collections is None
         assert config.commercial_use is False
-        assert config.operator == "AND"
         assert config.filters is None
 
     def test_toml_overrides_new_fields(self) -> None:
@@ -112,13 +111,11 @@ class TestBuildConfig:
         toml = {
             "collections": ["nasa", "smithsonian"],
             "commercial_use": True,
-            "operator": "OR",
             "filters": {"year": "2020"},
         }
         config = build_config(toml, None, None)
         assert config.collections == ["nasa", "smithsonian"]
         assert config.commercial_use is True
-        assert config.operator == "OR"
         assert config.filters == {"year": "2020"}
 
     def test_cli_overrides_new_fields(self) -> None:
@@ -126,7 +123,6 @@ class TestBuildConfig:
         toml = {
             "collections": ["nasa"],
             "commercial_use": True,
-            "operator": "OR",
             "filters": {"year": "2020"},
         }
         config = build_config(
@@ -135,12 +131,10 @@ class TestBuildConfig:
             None,
             cli_collections=["flickr-commons"],
             cli_commercial_use=False,
-            cli_operator="AND",
             cli_filters={"creator": "NASA"},
         )
         assert config.collections == ["flickr-commons"]
         assert config.commercial_use is False
-        assert config.operator == "AND"
         assert config.filters == {"creator": "NASA"}
 
     def test_partial_cli_new_fields(self) -> None:
@@ -155,11 +149,9 @@ class TestBuildConfig:
             None,
             cli_collections=None,
             cli_commercial_use=None,
-            cli_operator="OR",
         )
         assert config.collections == ["nasa"]
         assert config.commercial_use is True
-        assert config.operator == "OR"
         assert config.filters is None
 
 

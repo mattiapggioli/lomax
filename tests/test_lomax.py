@@ -4,55 +4,27 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lomax.ia_client import MainCollection, SearchResult
+from lomax.config import LomaxConfig
+from lomax.ia_client import SearchResult
 from lomax.lomax import Lomax
 from lomax.result import ImageResult, LomaxResult
 
-IMAGE_FORMATS = {
-    "JPEG",
-    "PNG",
-    "GIF",
-    "TIFF",
-    "JPEG 2000",
-    "Animated GIF",
-}
 
-
-def _make_ia_file(
-    name: str,
-    fmt: str = "JPEG",
-    size: str = "1024",
-    md5: str = "abc123",
-) -> dict:
-    """Build a fake IA file metadata dict."""
-    return {
-        "name": name,
-        "format": fmt,
-        "size": size,
-        "md5": md5,
-    }
-
-
-def _make_ia_item(
+def _img(
     identifier: str,
-    title: str = "Test Title",
-    description: str = "Test description",
-    files: list[dict] | None = None,
-    **extra_metadata: str | list[str],
-) -> MagicMock:
-    """Build a fake internetarchive Item object."""
-    item = MagicMock()
-    item.identifier = identifier
-    item.metadata = {
-        "identifier": identifier,
-        "title": title,
-        "description": description,
-        **extra_metadata,
-    }
-    if files is None:
-        files = [_make_ia_file("photo.jpg")]
-    item.files = files
-    return item
+    filename: str = "photo.jpg",
+    fmt: str = "JPEG",
+) -> ImageResult:
+    """Build a minimal ImageResult for testing."""
+    return ImageResult(
+        identifier=identifier,
+        filename=filename,
+        download_url=(f"https://archive.org/download/{identifier}/{filename}"),
+        format=fmt,
+        size=1024,
+        md5="abc123",
+        metadata={"identifier": identifier, "title": "Test"},
+    )
 
 
 class TestLomaxInit:
@@ -65,23 +37,20 @@ class TestLomaxInit:
 
     def test_custom_params(self) -> None:
         """Test Lomax initializes with custom parameters."""
-        lx = Lomax(max_results=5)
+        lx = Lomax(LomaxConfig(max_results=5))
         assert lx.max_results == 5
 
     def test_stores_search_params(self) -> None:
         """Test Lomax stores collections, commercial_use, etc."""
         lx = Lomax(
-            collections=["nasa", "smithsonian"],
-            commercial_use=True,
-            operator="OR",
-            filters={"year": "2020"},
+            LomaxConfig(
+                collections=["nasa", "smithsonian"],
+                commercial_use=True,
+                filters={"year": "2020"},
+            )
         )
-        assert lx.collections == [
-            MainCollection.NASA,
-            MainCollection.SMITHSONIAN,
-        ]
+        assert lx.collections == ["nasa", "smithsonian"]
         assert lx.commercial_use is True
-        assert lx.operator == "OR"
         assert lx.filters == {"year": "2020"}
 
     def test_default_search_params(self) -> None:
@@ -89,48 +58,45 @@ class TestLomaxInit:
         lx = Lomax()
         assert lx.collections is None
         assert lx.commercial_use is False
-        assert lx.operator == "AND"
         assert lx.filters is None
 
-    def test_invalid_collection_raises(self) -> None:
-        """Test Lomax raises ValueError for unknown collection."""
-        with pytest.raises(ValueError, match="Unknown collection: 'bogus'"):
-            Lomax(collections=["bogus"])
+    def test_arbitrary_collection_accepted(self) -> None:
+        """Test Lomax accepts any collection string."""
+        lx = Lomax(LomaxConfig(collections=["my-custom-collection"]))
+        assert lx.collections == ["my-custom-collection"]
 
 
 class TestLomaxSearchPassthrough:
     """Tests that Lomax.search() forwards params to IAClient."""
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_forwards_custom_params(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Test search() passes stored params to IAClient."""
         mock_extract.return_value = ["test"]
-        mock_ia.get_item.side_effect = lambda id: _make_ia_item(
-            id, files=[_make_ia_file(f"{id}.jpg")]
-        )
 
         lx = Lomax(
-            max_results=3,
-            collections=["nasa"],
-            commercial_use=True,
-            operator="OR",
-            filters={"year": "2020"},
+            LomaxConfig(
+                max_results=3,
+                collections=["nasa"],
+                commercial_use=True,
+                filters={"year": "2020"},
+            )
         )
         lx._client = MagicMock()
         lx._client.search.return_value = [SearchResult("t-1", "T1")]
+        lx._client.get_item_images.return_value = [
+            _img("t-1"),
+        ]
         lx.search("test")
 
         lx._client.search.assert_called_once_with(
             ["test"],
             max_results=6,
-            collections=[MainCollection.NASA],
+            collections=["nasa"],
             commercial_use=True,
-            operator="OR",
             filters={"year": "2020"},
         )
 
@@ -138,12 +104,10 @@ class TestLomaxSearchPassthrough:
 class TestLomaxSearch:
     """Tests for Lomax.search() pipeline."""
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_full_pipeline(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Test search() scatter-gathers per keyword."""
         mock_extract.return_value = ["jazz", "photo"]
@@ -161,22 +125,17 @@ class TestLomaxSearch:
             mediatype="image",
         )
 
-        item_jazz = _make_ia_item(
-            "jazz-1",
-            files=[_make_ia_file("pic.jpg", "JPEG", "2048", "aaa")],
-        )
-        item_photo = _make_ia_item(
-            "photo-1",
-            files=[_make_ia_file("shot.png", "PNG", "4096", "bbb")],
-        )
-        mock_ia.get_item.side_effect = lambda id: {
-            "jazz-1": item_jazz,
-            "photo-1": item_photo,
-        }[id]
-
-        lx = Lomax(max_results=2)
+        lx = Lomax(LomaxConfig(max_results=2))
         lx._client = MagicMock()
         lx._client.search.side_effect = [[sr_jazz], [sr_photo]]
+        lx._client.get_item_images.side_effect = lambda id: {
+            "jazz-1": [
+                _img("jazz-1", "pic.jpg", "JPEG"),
+            ],
+            "photo-1": [
+                _img("photo-1", "shot.png", "PNG"),
+            ],
+        }[id]
         result = lx.search("jazz, photo")
 
         mock_extract.assert_called_once_with("jazz, photo")
@@ -186,7 +145,6 @@ class TestLomaxSearch:
             max_results=4,
             collections=None,
             commercial_use=False,
-            operator="AND",
             filters=None,
         )
         lx._client.search.assert_any_call(
@@ -194,7 +152,6 @@ class TestLomaxSearch:
             max_results=4,
             collections=None,
             commercial_use=False,
-            operator="AND",
             filters=None,
         )
         assert isinstance(result, LomaxResult)
@@ -205,24 +162,19 @@ class TestLomaxSearch:
         assert "jazz-1" in ids
         assert "photo-1" in ids
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_max_results_override(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
-        """Test that max_results in search() overrides the default."""
+        """Test that max_results in search() overrides default."""
         mock_extract.return_value = ["test"]
         search_results = [SearchResult(f"id-{i}", f"T{i}") for i in range(10)]
-        mock_ia.get_item.side_effect = lambda id: _make_ia_item(
-            id, files=[_make_ia_file(f"{id}.jpg")]
-        )
 
-        # Default is 10, but we will override with 3
-        lx = Lomax(max_results=10)
+        lx = Lomax(LomaxConfig(max_results=10))
         lx._client = MagicMock()
         lx._client.search.return_value = search_results
+        lx._client.get_item_images.side_effect = lambda id: [_img(id)]
 
         result = lx.search("test", max_results=3)
         assert result.total_items == 3
@@ -232,7 +184,7 @@ class TestLomaxSearch:
         self,
         mock_extract: MagicMock,
     ) -> None:
-        """Test search() returns empty LomaxResult when nothing found."""
+        """Test search() returns empty LomaxResult when nothing."""
         mock_extract.return_value = ["nonexistent"]
 
         lx = Lomax()
@@ -246,80 +198,64 @@ class TestLomaxSearch:
         assert result.images == []
 
     def test_search_empty_prompt_raises(self) -> None:
-        """Test search() propagates ValueError from extract_keywords."""
+        """Test search() propagates ValueError from keywords."""
         lx = Lomax()
         with pytest.raises(ValueError, match="Prompt cannot be empty"):
             lx.search("")
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_skips_item_with_no_images(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Test search() skips items that have no image files."""
         mock_extract.return_value = ["test"]
-
-        item = _make_ia_item(
-            "no-images",
-            files=[_make_ia_file("data.xml", "Metadata")],
-        )
-        mock_ia.get_item.return_value = item
 
         lx = Lomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="no-images", title="No Images")
         ]
+        lx._client.get_item_images.return_value = []
         result = lx.search("test")
 
         assert result.total_images == 0
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_skips_item_on_get_item_failure(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
-        """Test search() skips items when get_item raises."""
+        """Test search() skips items when get_item_images fails."""
         mock_extract.return_value = ["test"]
-        mock_ia.get_item.side_effect = Exception("API error")
 
         lx = Lomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="fail", title="Fail")
         ]
+        lx._client.get_item_images.return_value = []
         result = lx.search("test")
 
         assert result.total_images == 0
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_multiple_files_per_item(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Test search() returns multiple ImageResults per item."""
         mock_extract.return_value = ["multi"]
-
-        item = _make_ia_item(
-            "multi",
-            files=[
-                _make_ia_file("a.jpg", "JPEG", "100", "m1"),
-                _make_ia_file("b.png", "PNG", "200", "m2"),
-                _make_ia_file("c.gif", "GIF", "300", "m3"),
-            ],
-        )
-        mock_ia.get_item.return_value = item
 
         lx = Lomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="multi", title="Multi")
+        ]
+        lx._client.get_item_images.return_value = [
+            _img("multi", "a.jpg", "JPEG"),
+            _img("multi", "b.png", "PNG"),
+            _img("multi", "c.gif", "GIF"),
         ]
         result = lx.search("multi")
 
@@ -328,121 +264,109 @@ class TestLomaxSearch:
         filenames = {img.filename for img in result.images}
         assert filenames == {"a.jpg", "b.png", "c.gif"}
 
-    @patch("lomax.lomax.ia")
-    @patch("lomax.lomax.extract_keywords")
-    def test_search_filters_non_image_formats(
-        self,
-        mock_extract: MagicMock,
-        mock_ia: MagicMock,
-    ) -> None:
-        """Test that non-image formats are filtered out."""
-        mock_extract.return_value = ["test"]
-
-        item = _make_ia_item(
-            "filter-test",
-            files=[
-                _make_ia_file("photo.jpg", "JPEG"),
-                _make_ia_file("meta.xml", "Metadata"),
-                _make_ia_file("thumb.png", "PNG"),
-                _make_ia_file("archive.zip", "ZIP"),
-                _make_ia_file("anim.gif", "Animated GIF"),
-                _make_ia_file("scan.tiff", "TIFF"),
-                _make_ia_file("hi-res.jp2", "JPEG 2000"),
-                _make_ia_file("plain.gif", "GIF"),
-            ],
-        )
-        mock_ia.get_item.return_value = item
-
-        lx = Lomax()
-        lx._client = MagicMock()
-        lx._client.search.return_value = [
-            SearchResult(identifier="filter-test", title="Filter")
-        ]
-        result = lx.search("test")
-
-        assert result.total_images == 6
-        formats = {img.format for img in result.images}
-        assert formats <= IMAGE_FORMATS
-
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_includes_item_metadata(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
-        """Test that ImageResult.metadata contains item-level fields."""
+        """Test that ImageResult.metadata contains item fields."""
         mock_extract.return_value = ["jazz"]
 
-        item = _make_ia_item(
-            "meta-test",
-            title="Jazz Photo",
-            description="A jazz photo",
-            files=[_make_ia_file("pic.jpg")],
-            creator="John Doe",
-            date="1955-03-12",
-            year="1955",
-            subject=["jazz", "photography"],
-            collection=["jazz-collection"],
-            licenseurl="https://creativecommons.org/licenses/by/4.0/",
-            rights="Public Domain",
-            publisher="Archive Press",
-        )
-        mock_ia.get_item.return_value = item
+        meta = {
+            "identifier": "meta-test",
+            "title": "Jazz Photo",
+            "description": "A jazz photo",
+            "creator": "John Doe",
+            "date": "1955-03-12",
+            "year": "1955",
+            "subject": ["jazz", "photography"],
+            "collection": ["jazz-collection"],
+            "licenseurl": ("https://creativecommons.org/licenses/by/4.0/"),
+            "rights": "Public Domain",
+            "publisher": "Archive Press",
+        }
 
         lx = Lomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="meta-test", title="Jazz Photo")
         ]
+        lx._client.get_item_images.return_value = [
+            ImageResult(
+                identifier="meta-test",
+                filename="pic.jpg",
+                download_url=(
+                    "https://archive.org/download/meta-test/pic.jpg"
+                ),
+                format="JPEG",
+                size=1024,
+                md5="abc123",
+                metadata=meta,
+            ),
+        ]
         result = lx.search("jazz")
 
-        meta = result.images[0].metadata
-        assert meta["identifier"] == "meta-test"
-        assert meta["title"] == "Jazz Photo"
-        assert meta["description"] == "A jazz photo"
-        assert meta["creator"] == "John Doe"
-        assert meta["date"] == "1955-03-12"
-        assert meta["year"] == "1955"
-        assert meta["subject"] == ["jazz", "photography"]
-        assert meta["collection"] == ["jazz-collection"]
-        assert meta["rights"] == "Public Domain"
-        assert meta["publisher"] == "Archive Press"
+        m = result.images[0].metadata
+        assert m["identifier"] == "meta-test"
+        assert m["title"] == "Jazz Photo"
+        assert m["description"] == "A jazz photo"
+        assert m["creator"] == "John Doe"
+        assert m["date"] == "1955-03-12"
+        assert m["year"] == "1955"
+        assert m["subject"] == ["jazz", "photography"]
+        assert m["collection"] == ["jazz-collection"]
+        assert m["rights"] == "Public Domain"
+        assert m["publisher"] == "Archive Press"
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_search_missing_metadata_fields_are_none(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Test metadata fields default to None when absent."""
         mock_extract.return_value = ["test"]
 
-        item = _make_ia_item(
-            "sparse",
-            title="Sparse",
-            description="No extras",
-            files=[_make_ia_file("img.jpg")],
-        )
-        mock_ia.get_item.return_value = item
+        meta = {
+            "identifier": "sparse",
+            "title": "Sparse",
+            "description": "No extras",
+            "creator": None,
+            "date": None,
+            "year": None,
+            "subject": None,
+            "collection": None,
+            "licenseurl": None,
+            "rights": None,
+            "publisher": None,
+        }
 
         lx = Lomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="sparse", title="Sparse")
         ]
+        lx._client.get_item_images.return_value = [
+            ImageResult(
+                identifier="sparse",
+                filename="img.jpg",
+                download_url=("https://archive.org/download/sparse/img.jpg"),
+                format="JPEG",
+                size=1024,
+                md5="abc123",
+                metadata=meta,
+            ),
+        ]
         result = lx.search("test")
 
-        meta = result.images[0].metadata
-        assert meta["creator"] is None
-        assert meta["date"] is None
-        assert meta["year"] is None
-        assert meta["subject"] is None
-        assert meta["collection"] is None
-        assert meta["licenseurl"] is None
-        assert meta["rights"] is None
-        assert meta["publisher"] is None
+        m = result.images[0].metadata
+        assert m["creator"] is None
+        assert m["date"] is None
+        assert m["year"] is None
+        assert m["subject"] is None
+        assert m["collection"] is None
+        assert m["licenseurl"] is None
+        assert m["rights"] is None
+        assert m["publisher"] is None
 
 
 class TestRoundRobinSample:
@@ -450,7 +374,7 @@ class TestRoundRobinSample:
 
     def test_balances_two_keyword_lists(self) -> None:
         """Round-robin alternates items from each keyword list."""
-        lx = Lomax(max_results=4)
+        lx = Lomax(LomaxConfig(max_results=4))
         cats = [SearchResult(f"cat-{i}", f"Cat {i}") for i in range(3)]
         dogs = [SearchResult(f"dog-{i}", f"Dog {i}") for i in range(3)]
         result = lx._round_robin_sample([cats, dogs], limit=lx.max_results)
@@ -459,7 +383,7 @@ class TestRoundRobinSample:
 
     def test_deduplicates_by_identifier(self) -> None:
         """Duplicate identifiers across lists are skipped."""
-        lx = Lomax(max_results=4)
+        lx = Lomax(LomaxConfig(max_results=4))
         list_a = [
             SearchResult("shared", "Shared"),
             SearchResult("a-1", "A1"),
@@ -470,13 +394,11 @@ class TestRoundRobinSample:
         ]
         result = lx._round_robin_sample([list_a, list_b], limit=lx.max_results)
         ids = [sr.identifier for sr in result]
-        # "shared" taken from list_a, duplicate from list_b
-        # dropped, then a-1 and b-1 interleaved
         assert ids == ["shared", "a-1", "b-1"]
 
     def test_exhausted_list_skipped(self) -> None:
-        """When one list runs out, items come from remaining lists."""
-        lx = Lomax(max_results=4)
+        """When one list runs out, items come from remaining."""
+        lx = Lomax(LomaxConfig(max_results=4))
         short = [SearchResult("s-0", "S0")]
         long = [SearchResult(f"l-{i}", f"L{i}") for i in range(5)]
         result = lx._round_robin_sample([short, long], limit=lx.max_results)
@@ -486,26 +408,26 @@ class TestRoundRobinSample:
 
     def test_stops_at_max_results(self) -> None:
         """Sampling stops once max_results items are collected."""
-        lx = Lomax(max_results=2)
+        lx = Lomax(LomaxConfig(max_results=2))
         big = [SearchResult(f"x-{i}", f"X{i}") for i in range(10)]
         result = lx._round_robin_sample([big], limit=lx.max_results)
         assert len(result) == 2
 
     def test_empty_candidates(self) -> None:
         """Empty candidate list returns empty result."""
-        lx = Lomax(max_results=5)
+        lx = Lomax(LomaxConfig(max_results=5))
         result = lx._round_robin_sample([], limit=lx.max_results)
         assert result == []
 
     def test_all_lists_empty(self) -> None:
         """All-empty candidate lists return empty result."""
-        lx = Lomax(max_results=5)
+        lx = Lomax(LomaxConfig(max_results=5))
         result = lx._round_robin_sample([[], []], limit=lx.max_results)
         assert result == []
 
     def test_all_duplicates_across_lists(self) -> None:
         """When all items are duplicates, only unique ones kept."""
-        lx = Lomax(max_results=5)
+        lx = Lomax(LomaxConfig(max_results=5))
         list_a = [SearchResult("x", "X")]
         list_b = [SearchResult("x", "X")]
         result = lx._round_robin_sample([list_a, list_b], limit=lx.max_results)
@@ -514,29 +436,34 @@ class TestRoundRobinSample:
 
     def test_three_keyword_lists(self) -> None:
         """Round-robin works across three keyword lists."""
-        lx = Lomax(max_results=6)
+        lx = Lomax(LomaxConfig(max_results=6))
         a = [SearchResult(f"a-{i}", f"A{i}") for i in range(3)]
         b = [SearchResult(f"b-{i}", f"B{i}") for i in range(3)]
         c = [SearchResult(f"c-{i}", f"C{i}") for i in range(3)]
         result = lx._round_robin_sample([a, b, c], limit=lx.max_results)
         ids = [sr.identifier for sr in result]
-        assert ids == ["a-0", "b-0", "c-0", "a-1", "b-1", "c-1"]
+        assert ids == [
+            "a-0",
+            "b-0",
+            "c-0",
+            "a-1",
+            "b-1",
+            "c-1",
+        ]
 
 
 class TestScatterGather:
     """Tests for scatter-gather search integration."""
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_per_keyword_limit_is_double(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Each keyword search uses max_results * 2 as limit."""
         mock_extract.return_value = ["a", "b"]
 
-        lx = Lomax(max_results=5)
+        lx = Lomax(LomaxConfig(max_results=5))
         lx._client = MagicMock()
         lx._client.search.return_value = []
         lx.search("a, b")
@@ -547,28 +474,23 @@ class TestScatterGather:
             assert kwargs["max_results"] == 10
             assert kwargs["collections"] is None
             assert kwargs["commercial_use"] is False
-            assert kwargs["operator"] == "AND"
             assert kwargs["filters"] is None
 
-    @patch("lomax.lomax.ia")
     @patch("lomax.lomax.extract_keywords")
     def test_single_keyword_searches_once(
         self,
         mock_extract: MagicMock,
-        mock_ia: MagicMock,
     ) -> None:
         """Single keyword degenerates to one search call."""
         mock_extract.return_value = ["jazz"]
 
-        lx = Lomax(max_results=3)
+        lx = Lomax(LomaxConfig(max_results=3))
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult("j-0", "J0"),
             SearchResult("j-1", "J1"),
         ]
-        mock_ia.get_item.side_effect = lambda id: _make_ia_item(
-            id, files=[_make_ia_file(f"{id}.jpg")]
-        )
+        lx._client.get_item_images.side_effect = lambda id: [_img(id)]
 
         result = lx.search("jazz")
 
@@ -577,7 +499,6 @@ class TestScatterGather:
             max_results=6,
             collections=None,
             commercial_use=False,
-            operator="AND",
             filters=None,
         )
         assert result.total_items == 2
@@ -591,7 +512,7 @@ class TestLomaxResultToDict:
         img = ImageResult(
             identifier="test-id",
             filename="photo.jpg",
-            download_url="https://archive.org/download/test-id/photo.jpg",
+            download_url=("https://archive.org/download/test-id/photo.jpg"),
             format="JPEG",
             size=1024,
             md5="abc123",

@@ -62,7 +62,6 @@ def build_config(
     cli_max_results: int | None,
     cli_collections: list[str] | None = None,
     cli_commercial_use: bool | None = None,
-    cli_operator: str | None = None,
     cli_filters: dict[str, str | list[str]] | None = None,
 ) -> LomaxConfig:
     """Build a LomaxConfig with layered overrides.
@@ -75,7 +74,6 @@ def build_config(
         cli_max_results: Max results from CLI, or None if not given.
         cli_collections: Collections from CLI, or None if not given.
         cli_commercial_use: Commercial use flag from CLI, or None.
-        cli_operator: Keyword operator from CLI, or None if not given.
         cli_filters: Filters from CLI, or None if not given.
 
     Returns:
@@ -92,8 +90,6 @@ def build_config(
         config.collections = toml_values["collections"]
     if "commercial_use" in toml_values:
         config.commercial_use = toml_values["commercial_use"]
-    if "operator" in toml_values:
-        config.operator = toml_values["operator"]
     if "filters" in toml_values:
         config.filters = toml_values["filters"]
 
@@ -106,8 +102,6 @@ def build_config(
         config.collections = cli_collections
     if cli_commercial_use is not None:
         config.commercial_use = cli_commercial_use
-    if cli_operator is not None:
-        config.operator = cli_operator
     if cli_filters is not None:
         config.filters = cli_filters
 
@@ -155,12 +149,6 @@ def main() -> None:
         help="restrict to commercial-use licenses",
     )
     parser.add_argument(
-        "--operator",
-        choices=["AND", "OR"],
-        default=None,
-        help='keyword join operator (default: "AND")',
-    )
-    parser.add_argument(
         "--filter",
         action="append",
         dest="filters",
@@ -181,17 +169,10 @@ def main() -> None:
         cli_max_results=args.max_results,
         cli_collections=args.collections,
         cli_commercial_use=args.commercial_use,
-        cli_operator=args.operator,
         cli_filters=parse_filters(args.filters),
     )
 
-    lx = Lomax(
-        max_results=config.max_results,
-        collections=config.collections,
-        commercial_use=config.commercial_use,
-        operator=config.operator,
-        filters=config.filters,
-    )
+    lx = Lomax(config)
     result = lx.search(args.prompt)
 
     if not result.images:

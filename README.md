@@ -27,9 +27,9 @@ uv run python main.py "vintage maps" -o my_images -n 5
 ### As a library
 
 ```python
-from lomax import Lomax, download_images
+from lomax import Lomax, LomaxConfig, download_images
 
-lx = Lomax(max_results=5)
+lx = Lomax(LomaxConfig(max_results=5))
 
 # Search only — no files downloaded
 result = lx.search("jazz, musicians, 1950s")
@@ -52,7 +52,6 @@ paths = download_images(result, "my_images")
 uv run python main.py "jazz, musicians" \
   --collections nasa smithsonian \
   --commercial-use \
-  --operator OR \
   --filter year=2020 \
   --filter creator=NASA
 ```
@@ -61,7 +60,6 @@ uv run python main.py "jazz, musicians" \
 |---|---|
 | `--collections` | Restrict to these IA collections (space-separated) |
 | `--commercial-use` / `--no-commercial-use` | Restrict to commercial-use-compatible licenses |
-| `--operator AND\|OR` | Logical operator for joining keywords (default: AND) |
 | `--filter key=value` | Arbitrary IA field filter (repeatable) |
 
 ### Configuration file

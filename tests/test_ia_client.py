@@ -1,13 +1,54 @@
 """Tests for the Internet Archive client."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from lomax.ia_client import (
     COMMERCIAL_USE_LICENSES,
+    IMAGE_FORMATS,
     IAClient,
     MainCollection,
     SearchResult,
 )
+from lomax.result import ImageResult
+
+
+def _make_ia_file(
+    name: str,
+    fmt: str = "JPEG",
+    size: str = "1024",
+    md5: str = "abc123",
+) -> dict:
+    """Build a fake IA file metadata dict."""
+    return {
+        "name": name,
+        "format": fmt,
+        "size": size,
+        "md5": md5,
+    }
+
+
+def _make_ia_item(
+    identifier: str,
+    title: str = "Test Title",
+    description: str = "Test description",
+    files: list[dict] | None = None,
+    **extra_metadata: str | list[str],
+) -> MagicMock:
+    """Build a fake internetarchive Item object."""
+    item = MagicMock()
+    item.identifier = identifier
+    item.metadata = {
+        "identifier": identifier,
+        "title": title,
+        "description": description,
+        **extra_metadata,
+    }
+    if files is None:
+        files = [_make_ia_file("photo.jpg")]
+    item.files = files
+    return item
 
 
 class TestIAClient:
@@ -234,6 +275,14 @@ class TestBuildFilterClauses:
         )
         assert clauses == ["collection:(nasa)"]
 
+    def test_arbitrary_collection_string(self) -> None:
+        """Test filtering by an arbitrary collection string."""
+        client = IAClient()
+        clauses = client._build_filter_clauses(
+            ["my-custom-collection"], False, None
+        )
+        assert clauses == ["collection:(my-custom-collection)"]
+
     def test_multiple_collections(self) -> None:
         """Test filtering by multiple collections."""
         client = IAClient()
@@ -308,3 +357,122 @@ class TestBuildFilterClauses:
         assert clauses[0] == "collection:(nasa)"
         assert clauses[1].startswith("licenseurl:(")
         assert clauses[2] == "year:2020"
+
+
+class TestGetItemImages:
+    """Tests for IAClient.get_item_images()."""
+
+    @patch("lomax.ia_client.ia")
+    def test_returns_images(self, mock_ia: MagicMock) -> None:
+        """Test get_item_images returns ImageResult list."""
+        mock_ia.get_item.return_value = _make_ia_item(
+            "test-id",
+            files=[_make_ia_file("pic.jpg", "JPEG", "2048", "aaa")],
+        )
+        client = IAClient()
+        results = client.get_item_images("test-id")
+
+        assert len(results) == 1
+        assert isinstance(results[0], ImageResult)
+        assert results[0].identifier == "test-id"
+        assert results[0].filename == "pic.jpg"
+
+    @patch("lomax.ia_client.ia")
+    def test_filters_non_image_formats(self, mock_ia: MagicMock) -> None:
+        """Test that non-image formats are filtered out."""
+        mock_ia.get_item.return_value = _make_ia_item(
+            "filter-test",
+            files=[
+                _make_ia_file("photo.jpg", "JPEG"),
+                _make_ia_file("meta.xml", "Metadata"),
+                _make_ia_file("thumb.png", "PNG"),
+                _make_ia_file("archive.zip", "ZIP"),
+                _make_ia_file("anim.gif", "Animated GIF"),
+                _make_ia_file("scan.tiff", "TIFF"),
+                _make_ia_file("hi-res.jp2", "JPEG 2000"),
+                _make_ia_file("plain.gif", "GIF"),
+            ],
+        )
+        client = IAClient()
+        results = client.get_item_images("filter-test")
+
+        assert len(results) == 6
+        formats = {r.format for r in results}
+        assert formats <= IMAGE_FORMATS
+
+    @patch("lomax.ia_client.ia")
+    def test_returns_empty_on_exception(self, mock_ia: MagicMock) -> None:
+        """Test returns empty list when get_item raises."""
+        mock_ia.get_item.side_effect = Exception("API error")
+        client = IAClient()
+        results = client.get_item_images("fail")
+
+        assert results == []
+
+    @patch("lomax.ia_client.ia")
+    def test_metadata_populated(self, mock_ia: MagicMock) -> None:
+        """Test that ImageResult.metadata contains item fields."""
+        mock_ia.get_item.return_value = _make_ia_item(
+            "meta-test",
+            title="Jazz Photo",
+            description="A jazz photo",
+            files=[_make_ia_file("pic.jpg")],
+            creator="John Doe",
+            date="1955-03-12",
+            year="1955",
+            subject=["jazz", "photography"],
+            collection=["jazz-collection"],
+            licenseurl="https://creativecommons.org/licenses/by/4.0/",
+            rights="Public Domain",
+            publisher="Archive Press",
+        )
+        client = IAClient()
+        results = client.get_item_images("meta-test")
+
+        meta = results[0].metadata
+        assert meta["identifier"] == "meta-test"
+        assert meta["title"] == "Jazz Photo"
+        assert meta["description"] == "A jazz photo"
+        assert meta["creator"] == "John Doe"
+        assert meta["date"] == "1955-03-12"
+        assert meta["year"] == "1955"
+        assert meta["subject"] == ["jazz", "photography"]
+        assert meta["collection"] == ["jazz-collection"]
+        assert meta["rights"] == "Public Domain"
+        assert meta["publisher"] == "Archive Press"
+
+    @patch("lomax.ia_client.ia")
+    def test_metadata_defaults_to_none(self, mock_ia: MagicMock) -> None:
+        """Test metadata fields default to None when absent."""
+        mock_ia.get_item.return_value = _make_ia_item(
+            "sparse",
+            title="Sparse",
+            description="No extras",
+            files=[_make_ia_file("img.jpg")],
+        )
+        client = IAClient()
+        results = client.get_item_images("sparse")
+
+        meta = results[0].metadata
+        assert meta["creator"] is None
+        assert meta["date"] is None
+        assert meta["year"] is None
+        assert meta["subject"] is None
+        assert meta["collection"] is None
+        assert meta["licenseurl"] is None
+        assert meta["rights"] is None
+        assert meta["publisher"] is None
+
+    @patch("lomax.ia_client.ia")
+    def test_download_url_format(self, mock_ia: MagicMock) -> None:
+        """Test download URL is correctly formatted."""
+        mock_ia.get_item.return_value = _make_ia_item(
+            "url-test",
+            files=[_make_ia_file("photo.jpg")],
+        )
+        client = IAClient()
+        results = client.get_item_images("url-test")
+
+        assert results[0].download_url == (
+            "https://archive.org/download/url-test/photo.jpg"
+        )

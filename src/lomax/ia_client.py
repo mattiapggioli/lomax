@@ -1,10 +1,24 @@
 """Internet Archive client for image retrieval."""
 
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import islice
 
 import internetarchive as ia
+
+from lomax.result import ImageResult
+
+logger = logging.getLogger(__name__)
+
+IMAGE_FORMATS = {
+    "JPEG",
+    "PNG",
+    "GIF",
+    "TIFF",
+    "JPEG 2000",
+    "Animated GIF",
+}
 
 
 class MainCollection(StrEnum):
@@ -55,12 +69,58 @@ class IAClient:
 
     VALID_OPERATORS = {"AND", "OR"}
 
+    def get_item_images(self, identifier: str) -> list[ImageResult]:
+        """Fetch image file info for a single IA item.
+
+        Args:
+            identifier: IA item identifier.
+
+        Returns:
+            List of ImageResult for image files found, or empty
+            list if the item can't be fetched or has no images.
+        """
+        try:
+            item = ia.get_item(identifier)
+        except Exception:
+            logger.warning("Failed to get item: %s", identifier)
+            return []
+
+        metadata = {
+            "identifier": item.metadata.get("identifier", ""),
+            "title": item.metadata.get("title", ""),
+            "description": item.metadata.get("description", ""),
+            "creator": item.metadata.get("creator"),
+            "date": item.metadata.get("date"),
+            "year": item.metadata.get("year"),
+            "subject": item.metadata.get("subject"),
+            "collection": item.metadata.get("collection"),
+            "licenseurl": item.metadata.get("licenseurl"),
+            "rights": item.metadata.get("rights"),
+            "publisher": item.metadata.get("publisher"),
+        }
+
+        return [
+            ImageResult(
+                identifier=identifier,
+                filename=f["name"],
+                download_url=(
+                    f"https://archive.org/download/{identifier}/{f['name']}"
+                ),
+                format=f["format"],
+                size=int(f.get("size", 0)),
+                md5=f.get("md5", ""),
+                metadata=metadata,
+            )
+            for f in item.files
+            if f.get("format") in IMAGE_FORMATS
+        ]
+
     def search(
         self,
         keywords: list[str],
         max_results: int = 10,
         operator: str = "AND",
-        collections: list[MainCollection] | None = None,
+        collections: list[str] | None = None,
         commercial_use: bool = False,
         filters: dict[str, str | list[str]] | None = None,
     ) -> list[SearchResult]:
@@ -72,6 +132,8 @@ class IAClient:
             operator: Logical operator to join keywords.
                 Must be "AND" or "OR". Defaults to "AND".
             collections: Restrict results to these IA collections.
+                Any valid IA collection identifier string is
+                accepted.
             commercial_use: If True, restrict to commercial-use
                 licenses.
             filters: Arbitrary IA field filters. Keys are field
@@ -103,7 +165,7 @@ class IAClient:
 
     def _build_filter_clauses(
         self,
-        collections: list[MainCollection] | None,
+        collections: list[str] | None,
         commercial_use: bool,
         filters: dict[str, str | list[str]] | None,
     ) -> list[str]:
