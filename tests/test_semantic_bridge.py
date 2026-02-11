@@ -2,7 +2,7 @@
 
 import pytest
 
-from lomax.semantic_bridge import extract_keywords
+from llomax.semantic_bridge import extract_keywords
 
 
 class TestExtractKeywords:
@@ -18,7 +18,7 @@ class TestExtractKeywords:
         assert result == ["jazz", "musicians", "1950s"]
 
     def test_strips_whitespace(self) -> None:
-        """Test that whitespace is stripped from each keyword."""
+        """Test that whitespace is stripped from keywords."""
         result = extract_keywords("  jazz ,  musicians  , 1950s  ")
         assert result == ["jazz", "musicians", "1950s"]
 
@@ -27,12 +27,14 @@ class TestExtractKeywords:
         with pytest.raises(ValueError, match="Prompt cannot be empty"):
             extract_keywords("")
 
-    def test_whitespace_only_prompt_raises_error(self) -> None:
-        """Test that whitespace-only prompt raises ValueError."""
+    def test_whitespace_only_prompt_raises_error(
+        self,
+    ) -> None:
+        """Test whitespace-only prompt raises ValueError."""
         with pytest.raises(ValueError, match="Prompt cannot be empty"):
             extract_keywords("   ")
 
     def test_filters_empty_segments(self) -> None:
-        """Test that empty segments from extra commas are filtered."""
+        """Test empty segments from extra commas filtered."""
         result = extract_keywords("jazz,,musicians,")
         assert result == ["jazz", "musicians"]

@@ -1,28 +1,28 @@
-"""Lomax orchestrator: prompt → keywords → search → structured results."""
+"""Llomax orchestrator: prompt -> keywords -> search -> structured results."""
 
 from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 
 from more_itertools import roundrobin, unique_everseen
 
-from lomax.config import LomaxConfig
-from lomax.ia_client import IAClient, SearchResult
-from lomax.result import ImageResult, LomaxResult
-from lomax.semantic_bridge import extract_keywords
+from llomax.config import LlomaxConfig
+from llomax.ia_client import IAClient, SearchResult
+from llomax.result import ImageResult, LlomaxResult
+from llomax.semantic_bridge import extract_keywords
 
 
-class Lomax:
-    """Orchestrates prompt → keywords → search → image results."""
+class Llomax:
+    """Orchestrates prompt -> keywords -> search -> image results."""
 
-    def __init__(self, config: LomaxConfig | None = None) -> None:
-        """Initialize the Lomax orchestrator.
+    def __init__(self, config: LlomaxConfig | None = None) -> None:
+        """Initialize the Llomax orchestrator.
 
         Args:
             config: Configuration for search parameters. If None,
                 library defaults are used.
         """
         if config is None:
-            config = LomaxConfig()
+            config = LlomaxConfig()
         self.max_results = config.max_results
         self.collections = config.collections
         self.commercial_use = config.commercial_use
@@ -31,7 +31,7 @@ class Lomax:
 
     def search(
         self, prompt: str, max_results: int | None = None
-    ) -> LomaxResult:
+    ) -> LlomaxResult:
         """Search the Internet Archive for images matching a prompt.
 
         Uses a scatter-gather strategy: searches each keyword
@@ -45,7 +45,7 @@ class Lomax:
                 If None, the default from initialization is used.
 
         Returns:
-            LomaxResult with balanced, de-duplicated image files.
+            LlomaxResult with balanced, de-duplicated image files.
 
         Raises:
             ValueError: If prompt is empty.
@@ -60,7 +60,7 @@ class Lomax:
 
         images = self._parallel_fetch_images(selected)
 
-        return LomaxResult(
+        return LlomaxResult(
             prompt=prompt,
             keywords=keywords,
             images=images,

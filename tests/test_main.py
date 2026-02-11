@@ -3,8 +3,12 @@
 import argparse
 from pathlib import Path
 
-from lomax.config import LomaxConfig
-from cli_utils import _build_config, _load_toml, _parse_filters
+from cli_utils import (
+    _build_config,
+    _load_toml,
+    _parse_filters,
+)
+from llomax.config import LlomaxConfig
 
 
 def _make_args(**overrides: object) -> argparse.Namespace:
@@ -30,19 +34,22 @@ class TestLoadToml:
         result = _load_toml(tmp_path / "nope.toml")
         assert result == {}
 
-    def test_reads_lomax_section(self, tmp_path: Path) -> None:
-        """Test _load_toml reads values from the [lomax] section."""
-        toml_file = tmp_path / "lomax.toml"
+    def test_reads_llomax_section(self, tmp_path: Path) -> None:
+        """Test _load_toml reads values from [llomax] section."""
+        toml_file = tmp_path / "llomax.toml"
         toml_file.write_text(
-            '[lomax]\noutput_dir = "custom"\nmax_results = 5\n'
+            '[llomax]\noutput_dir = "custom"\nmax_results = 5\n'
         )
         result = _load_toml(toml_file)
-        assert result == {"output_dir": "custom", "max_results": 5}
+        assert result == {
+            "output_dir": "custom",
+            "max_results": 5,
+        }
 
-    def test_returns_empty_dict_when_no_lomax_section(
+    def test_returns_empty_dict_when_no_llomax_section(
         self, tmp_path: Path
     ) -> None:
-        """Test _load_toml returns {} when [lomax] is absent."""
+        """Test _load_toml returns {} when [llomax] is absent."""
         toml_file = tmp_path / "other.toml"
         toml_file.write_text('[other]\nkey = "value"\n')
         result = _load_toml(toml_file)
@@ -53,9 +60,9 @@ class TestBuildConfig:
     """Tests for _build_config() layered merging."""
 
     def test_defaults_only(self) -> None:
-        """No TOML, no CLI → library defaults."""
+        """No TOML, no CLI -> library defaults."""
         config = _build_config({}, _make_args())
-        assert config.output_dir == "lomax_output"
+        assert config.output_dir == "llomax_output"
         assert config.max_results == 10
 
     def test_toml_overrides_defaults(self) -> None:
@@ -91,7 +98,7 @@ class TestBuildConfig:
             {"max_results": 25},
             _make_args(),
         )
-        assert config.output_dir == "lomax_output"
+        assert config.output_dir == "llomax_output"
         assert config.max_results == 25
 
     def test_partial_cli_override(self) -> None:
@@ -103,13 +110,13 @@ class TestBuildConfig:
         assert config.output_dir == "toml_dir"
         assert config.max_results == 3
 
-    def test_returns_lomax_config(self) -> None:
-        """_build_config returns a LomaxConfig instance."""
+    def test_returns_llomax_config(self) -> None:
+        """_build_config returns a LlomaxConfig instance."""
         config = _build_config({}, _make_args())
-        assert isinstance(config, LomaxConfig)
+        assert isinstance(config, LlomaxConfig)
 
     def test_defaults_include_new_fields(self) -> None:
-        """No TOML, no CLI → library defaults for new fields."""
+        """No TOML, no CLI -> library defaults for new fields."""
         config = _build_config({}, _make_args())
         assert config.collections is None
         assert config.commercial_use is False
@@ -123,7 +130,10 @@ class TestBuildConfig:
             "filters": {"year": "2020"},
         }
         config = _build_config(toml, _make_args())
-        assert config.collections == ["nasa", "smithsonian"]
+        assert config.collections == [
+            "nasa",
+            "smithsonian",
+        ]
         assert config.commercial_use is True
         assert config.filters == {"year": "2020"}
 
@@ -172,13 +182,14 @@ class TestParseFilters:
     def test_single_values(self) -> None:
         """Single key=value pairs produce string values."""
         result = _parse_filters(["year=2020", "creator=NASA"])
-        assert result == {"year": "2020", "creator": "NASA"}
+        assert result == {
+            "year": "2020",
+            "creator": "NASA",
+        }
 
     def test_duplicate_keys_merge(self) -> None:
         """Duplicate keys are merged into a list."""
-        result = _parse_filters(
-            ["subject=jazz", "subject=photo", "year=2020"]
-        )
+        result = _parse_filters(["subject=jazz", "subject=photo", "year=2020"])
         assert result == {
             "subject": ["jazz", "photo"],
             "year": "2020",

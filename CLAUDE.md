@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What is Lomax
+## What is Llomax
 
-A Python library for searching and downloading images from the Internet Archive based on keyword prompts. `Lomax.search()` returns structured results (`LomaxResult` / `ImageResult`). `download_images()` is a convenience utility to save files to disk.
+A Python library for searching and downloading images from the Internet Archive based on keyword prompts. `Llomax.search()` returns structured results (`LlomaxResult` / `ImageResult`). `download_images()` is a convenience utility to save files to disk.
 
 ## Commands
 
@@ -20,16 +20,16 @@ uv run python main.py "keywords"         # Run via main.py
 
 ## Architecture
 
-Source lives in `src/lomax/` (hatchling `src` layout). Public API: `from lomax import Lomax, LomaxConfig, LomaxResult, ImageResult, MainCollection, download_images`.
+Source lives in `src/llomax/` (hatchling `src` layout). Public API: `from llomax import Llomax, LlomaxConfig, LlomaxResult, ImageResult, MainCollection, download_images`.
 
-- `main.py` — CLI entry point. Calls `Lomax.search()` then `download_images()`. Parameter priority: CLI args > `lomax.toml` config > hardcoded defaults. CLI supports `--collections`, `--commercial-use`/`--no-commercial-use`, and `--filter` flags. `parse_filters()` converts repeatable `key=value` strings into a dict.
-- `lomax.toml` — TOML config file with a `[lomax]` section (`output_dir`, `max_results`, `collections`, `commercial_use`, `filters`). Loaded via stdlib `tomllib`.
-- `src/lomax/result.py` — Data structures: `ImageResult` (single image file with download URL, format, size, md5, item metadata dict) and `LomaxResult` (prompt, keywords, list of `ImageResult`, `to_dict()` for JSON serialization).
-- `src/lomax/config.py` — `LomaxConfig` dataclass with library-level defaults (`output_dir`, `max_results`, `collections`, `commercial_use`, `filters`). Used by `main.py` for layered config resolution.
-- `src/lomax/lomax.py` — `Lomax` orchestrator: scatter-gather search (prompt → keywords → per-keyword IA search → round-robin sampling with dedup → image results → `LomaxResult`). `__init__()` accepts an optional `LomaxConfig` (defaults used when None). `search()` accepts an optional `max_results` override. Uses `more_itertools.roundrobin` and `unique_everseen` for balanced results across keywords. No filesystem side effects.
-- `src/lomax/util.py` — `download_images(result, output_dir)`: downloads files from `ImageResult.download_url`, saves to `{output_dir}/{identifier}/{filename}`, writes `metadata.json` per item.
-- `src/lomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()` and `ia.get_item()`. Returns `SearchResult` dataclasses from search and `ImageResult` lists from `get_item_images()`. `MainCollection` StrEnum provides well-known IA image collections (NASA, Smithsonian, Flickr Commons, etc.). `IAClient.search()` supports hybrid filtering: `collections` (any IA collection string), `commercial_use` (restrict to CC-compatible licenses via `COMMERCIAL_USE_LICENSES` set), `filters` (arbitrary IA field filters), and `operator` ("AND"/"OR" keyword joining). `IMAGE_FORMATS` set defines accepted image file types.
-- `src/lomax/semantic_bridge.py` — `extract_keywords()` converts prompts to keyword lists. Currently a simple comma-split placeholder; intended to be replaced with LLM-based extraction.
+- `main.py` — CLI entry point. Calls `Llomax.search()` then `download_images()`. Parameter priority: CLI args > `llomax.toml` config > hardcoded defaults. CLI supports `--collections`, `--commercial-use`/`--no-commercial-use`, and `--filter` flags. `parse_filters()` converts repeatable `key=value` strings into a dict.
+- `llomax.toml` — TOML config file with a `[llomax]` section (`output_dir`, `max_results`, `collections`, `commercial_use`, `filters`). Loaded via stdlib `tomllib`.
+- `src/llomax/result.py` — Data structures: `ImageResult` (single image file with download URL, format, size, md5, item metadata dict) and `LlomaxResult` (prompt, keywords, list of `ImageResult`, `to_dict()` for JSON serialization).
+- `src/llomax/config.py` — `LlomaxConfig` dataclass with library-level defaults (`output_dir`, `max_results`, `collections`, `commercial_use`, `filters`). Used by `main.py` for layered config resolution.
+- `src/llomax/llomax.py` — `Llomax` orchestrator: scatter-gather search (prompt → keywords → per-keyword IA search → round-robin sampling with dedup → image results → `LlomaxResult`). `__init__()` accepts an optional `LlomaxConfig` (defaults used when None). `search()` accepts an optional `max_results` override. Uses `more_itertools.roundrobin` and `unique_everseen` for balanced results across keywords. No filesystem side effects.
+- `src/llomax/util.py` — `download_images(result, output_dir)`: downloads files from `ImageResult.download_url`, saves to `{output_dir}/{identifier}/{filename}`, writes `metadata.json` per item.
+- `src/llomax/ia_client.py` — `IAClient` wraps `internetarchive.search_items()` and `ia.get_item()`. Returns `SearchResult` dataclasses from search and `ImageResult` lists from `get_item_images()`. `MainCollection` StrEnum provides well-known IA image collections (NASA, Smithsonian, Flickr Commons, etc.). `IAClient.search()` supports hybrid filtering: `collections` (any IA collection string), `commercial_use` (restrict to CC-compatible licenses via `COMMERCIAL_USE_LICENSES` set), `filters` (arbitrary IA field filters), and `operator` ("AND"/"OR" keyword joining). `IMAGE_FORMATS` set defines accepted image file types.
+- `src/llomax/semantic_bridge.py` — `extract_keywords()` converts prompts to keyword lists. Currently a simple comma-split placeholder; intended to be replaced with LLM-based extraction.
 
 ## Development Workflow
 
@@ -47,6 +47,6 @@ Follow TDD: write tests first, then implement, then run `uv run pytest`, then `u
 - Prefer list comprehensions over for-loop-append patterns when the result is clean and readable
 - Ruff enforces PEP 8 with 79-char line length (rules: E, F, I, W)
 - Tests in `tests/` mirroring `src/` structure
-- `test_lomax.py` mocks `_client` (IAClient) only — search has no network/filesystem side effects
+- `test_llomax.py` mocks `_client` (IAClient) only — search has no network/filesystem side effects
 - `test_util.py` mocks `requests.get` and uses `tmp_path` for filesystem assertions
 - **Exception:** `test_ia_client.py` hits the real Internet Archive API (no mocks) — requires network access and may be slow

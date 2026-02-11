@@ -1,4 +1,4 @@
-"""Data structures for Lomax search results."""
+"""Data structures for Llomax search results."""
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,8 +28,8 @@ class ImageResult:
 
 
 @dataclass
-class LomaxResult:
-    """Complete search result from the Lomax pipeline.
+class LlomaxResult:
+    """Complete search result from the Llomax pipeline.
 
     Args:
         prompt: The original user prompt.

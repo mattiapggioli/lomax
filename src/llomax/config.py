@@ -1,10 +1,10 @@
-"""Configuration defaults for Lomax."""
+"""Configuration defaults for Llomax."""
 
 from dataclasses import dataclass
 
 
 @dataclass
-class LomaxConfig:
+class LlomaxConfig:
     """Central configuration with library-level defaults.
 
     Attributes:
@@ -15,7 +15,7 @@ class LomaxConfig:
         filters: Arbitrary IA field filters.
     """
 
-    output_dir: str = "lomax_output"
+    output_dir: str = "llomax_output"
     max_results: int = 10
     collections: list[str] | None = None
     commercial_use: bool = False

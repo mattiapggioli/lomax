@@ -1,4 +1,4 @@
-# Lomax
+# Llomax
 
 A Python library for searching and downloading images from the [Internet Archive](https://archive.org) based on keyword prompts.
 
@@ -27,9 +27,9 @@ uv run python main.py "vintage maps" -o my_images -n 5
 ### As a library
 
 ```python
-from lomax import Lomax, LomaxConfig, download_images
+from llomax import Llomax, LlomaxConfig, download_images
 
-lx = Lomax(LomaxConfig(max_results=5))
+lx = Llomax(LlomaxConfig(max_results=5))
 
 # Search only — no files downloaded
 result = lx.search("jazz, musicians, 1950s")
@@ -64,21 +64,21 @@ uv run python main.py "jazz, musicians" \
 
 ### Configuration file
 
-`lomax.toml` supports all search parameters:
+`llomax.toml` supports all search parameters:
 
 ```toml
-[lomax]
-output_dir = "~/data/lomax"
+[llomax]
+output_dir = "~/data/llomax"
 max_results = 10
 # collections = ["nasa", "smithsonian"]
 # commercial_use = false
 
-# [lomax.filters]
+# [llomax.filters]
 # year = "2020"
 # date = "[1950-01-01 TO 1959-12-31]"
 ```
 
-Priority: CLI args > `lomax.toml` > library defaults.
+Priority: CLI args > `llomax.toml` > library defaults.
 
 ## Output structure
 

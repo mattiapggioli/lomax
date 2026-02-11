@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lomax.ia_client import (
+from llomax.ia_client import (
     COMMERCIAL_USE_LICENSES,
     IMAGE_FORMATS,
     IAClient,
     MainCollection,
     SearchResult,
 )
-from lomax.result import ImageResult
+from llomax.result import ImageResult
 
 
 def _make_ia_file(
@@ -71,7 +71,9 @@ class TestIAClient:
         results = client.search(["jazz", "musicians", "1950s"])
         assert isinstance(results, list)
 
-    def test_search_with_empty_keywords_raises_error(self) -> None:
+    def test_search_with_empty_keywords_raises_error(
+        self,
+    ) -> None:
         """Test that empty keywords list raises ValueError."""
         client = IAClient()
         with pytest.raises(ValueError, match="Keywords cannot be empty"):
@@ -84,7 +86,9 @@ class TestIAClient:
         results = client.search(["music"], max_results=max_results)
         assert len(results) <= max_results
 
-    def test_search_result_has_required_fields(self) -> None:
+    def test_search_result_has_required_fields(
+        self,
+    ) -> None:
         """Test that search results contain required fields."""
         client = IAClient()
         results = client.search(["portrait"], max_results=1)
@@ -98,20 +102,26 @@ class TestIAClient:
         """Test search with OR operator returns results."""
         client = IAClient()
         results = client.search(
-            ["jazz", "blues"], operator="OR", max_results=3
+            ["jazz", "blues"],
+            operator="OR",
+            max_results=3,
         )
         assert isinstance(results, list)
 
     def test_search_with_and_operator(self) -> None:
-        """Test search with explicit AND operator returns results."""
+        """Test search with explicit AND operator."""
         client = IAClient()
         results = client.search(
-            ["jazz", "photo"], operator="AND", max_results=3
+            ["jazz", "photo"],
+            operator="AND",
+            max_results=3,
         )
         assert isinstance(results, list)
 
-    def test_search_invalid_operator_raises_error(self) -> None:
-        """Test that an unsupported operator raises ValueError."""
+    def test_search_invalid_operator_raises_error(
+        self,
+    ) -> None:
+        """Test that unsupported operator raises ValueError."""
         client = IAClient()
         with pytest.raises(ValueError, match="Unsupported operator"):
             client.search(["jazz"], operator="XOR")
@@ -151,16 +161,16 @@ class TestBuildQuery:
     """Unit tests for IAClient._build_query()."""
 
     def test_and_operator(self) -> None:
-        """Test _build_query with AND joins keywords with AND."""
+        """Test _build_query with AND joins keywords."""
         client = IAClient()
         query = client._build_query(["jazz", "photo"], "AND")
-        assert query == "(jazz AND photo) AND mediatype:image"
+        assert query == ("(jazz AND photo) AND mediatype:image")
 
     def test_or_operator(self) -> None:
         """Test _build_query with OR joins keywords with OR."""
         client = IAClient()
         query = client._build_query(["jazz", "photo"], "OR")
-        assert query == "(jazz OR photo) AND mediatype:image"
+        assert query == ("(jazz OR photo) AND mediatype:image")
 
     def test_single_keyword(self) -> None:
         """Test _build_query with a single keyword."""
@@ -215,7 +225,7 @@ class TestSearchResult:
     """Tests for SearchResult dataclass."""
 
     def test_search_result_creation(self) -> None:
-        """Test SearchResult can be created with required fields."""
+        """Test SearchResult can be created."""
         result = SearchResult(
             identifier="test-id",
             title="Test Title",
@@ -287,7 +297,10 @@ class TestBuildFilterClauses:
         """Test filtering by multiple collections."""
         client = IAClient()
         clauses = client._build_filter_clauses(
-            [MainCollection.NASA, MainCollection.SMITHSONIAN],
+            [
+                MainCollection.NASA,
+                MainCollection.SMITHSONIAN,
+            ],
             False,
             None,
         )
@@ -362,7 +375,7 @@ class TestBuildFilterClauses:
 class TestGetItemImages:
     """Tests for IAClient.get_item_images()."""
 
-    @patch("lomax.ia_client.ia")
+    @patch("llomax.ia_client.ia")
     def test_returns_images(self, mock_ia: MagicMock) -> None:
         """Test get_item_images returns ImageResult list."""
         mock_ia.get_item.return_value = _make_ia_item(
@@ -377,7 +390,7 @@ class TestGetItemImages:
         assert results[0].identifier == "test-id"
         assert results[0].filename == "pic.jpg"
 
-    @patch("lomax.ia_client.ia")
+    @patch("llomax.ia_client.ia")
     def test_filters_non_image_formats(self, mock_ia: MagicMock) -> None:
         """Test that non-image formats are filtered out."""
         mock_ia.get_item.return_value = _make_ia_item(
@@ -400,7 +413,7 @@ class TestGetItemImages:
         formats = {r.format for r in results}
         assert formats <= IMAGE_FORMATS
 
-    @patch("lomax.ia_client.ia")
+    @patch("llomax.ia_client.ia")
     def test_returns_empty_on_exception(self, mock_ia: MagicMock) -> None:
         """Test returns empty list when get_item raises."""
         mock_ia.get_item.side_effect = Exception("API error")
@@ -409,9 +422,9 @@ class TestGetItemImages:
 
         assert results == []
 
-    @patch("lomax.ia_client.ia")
+    @patch("llomax.ia_client.ia")
     def test_metadata_populated(self, mock_ia: MagicMock) -> None:
-        """Test that ImageResult.metadata contains item fields."""
+        """Test that ImageResult.metadata contains fields."""
         mock_ia.get_item.return_value = _make_ia_item(
             "meta-test",
             title="Jazz Photo",
@@ -422,7 +435,7 @@ class TestGetItemImages:
             year="1955",
             subject=["jazz", "photography"],
             collection=["jazz-collection"],
-            licenseurl="https://creativecommons.org/licenses/by/4.0/",
+            licenseurl=("https://creativecommons.org/licenses/by/4.0/"),
             rights="Public Domain",
             publisher="Archive Press",
         )
@@ -436,12 +449,15 @@ class TestGetItemImages:
         assert meta["creator"] == "John Doe"
         assert meta["date"] == "1955-03-12"
         assert meta["year"] == "1955"
-        assert meta["subject"] == ["jazz", "photography"]
+        assert meta["subject"] == [
+            "jazz",
+            "photography",
+        ]
         assert meta["collection"] == ["jazz-collection"]
         assert meta["rights"] == "Public Domain"
         assert meta["publisher"] == "Archive Press"
 
-    @patch("lomax.ia_client.ia")
+    @patch("llomax.ia_client.ia")
     def test_metadata_defaults_to_none(self, mock_ia: MagicMock) -> None:
         """Test metadata fields default to None when absent."""
         mock_ia.get_item.return_value = _make_ia_item(
@@ -463,7 +479,7 @@ class TestGetItemImages:
         assert meta["rights"] is None
         assert meta["publisher"] is None
 
-    @patch("lomax.ia_client.ia")
+    @patch("llomax.ia_client.ia")
     def test_download_url_format(self, mock_ia: MagicMock) -> None:
         """Test download URL is correctly formatted."""
         mock_ia.get_item.return_value = _make_ia_item(

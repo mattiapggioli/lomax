@@ -1,12 +1,12 @@
-"""Command-line interface for Lomax."""
+"""Command-line interface for Llomax."""
 
 import argparse
 import tomllib
 from pathlib import Path
 
-from lomax import LomaxConfig
+from llomax import LlomaxConfig
 
-DEFAULT_CONFIG_PATH = Path("lomax.toml")
+DEFAULT_CONFIG_PATH = Path("llomax.toml")
 
 
 def _load_toml(path: Path) -> dict:
@@ -16,14 +16,14 @@ def _load_toml(path: Path) -> dict:
         path: Path to the TOML config file.
 
     Returns:
-        Dict of config values from the [lomax] section,
+        Dict of config values from the [llomax] section,
         or empty dict if file not found.
     """
     if not path.exists():
         return {}
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    return data.get("lomax", {})
+    return data.get("llomax", {})
 
 
 def _parse_filters(
@@ -58,8 +58,8 @@ def _parse_filters(
 def _build_config(
     toml_values: dict,
     cli_args: argparse.Namespace,
-) -> LomaxConfig:
-    """Build a LomaxConfig with layered overrides.
+) -> LlomaxConfig:
+    """Build a LlomaxConfig with layered overrides.
 
     Priority: CLI args > TOML values > library defaults.
 
@@ -68,9 +68,9 @@ def _build_config(
         cli_args: Parsed arguments from the command line.
 
     Returns:
-        Fully resolved LomaxConfig.
+        Fully resolved LlomaxConfig.
     """
-    config = LomaxConfig()
+    config = LlomaxConfig()
 
     # Layer 2: TOML overrides library defaults
     if "output_dir" in toml_values:
@@ -101,12 +101,10 @@ def _build_config(
     return config
 
 
-def get_cli_config() -> tuple[str, LomaxConfig]:
-    """Parse command-line arguments and build a LomaxConfig."""
+def get_cli_config() -> tuple[str, LlomaxConfig]:
+    """Parse command-line arguments and build a LlomaxConfig."""
     parser = argparse.ArgumentParser(
-        description=(
-            "Search and download images from the Internet Archive."
-        ),
+        description=("Search and download images from the Internet Archive."),
     )
     parser.add_argument(
         "prompt",
@@ -155,9 +153,7 @@ def get_cli_config() -> tuple[str, LomaxConfig]:
     )
     args = parser.parse_args()
 
-    config_path = (
-        Path(args.config) if args.config else DEFAULT_CONFIG_PATH
-    )
+    config_path = Path(args.config) if args.config else DEFAULT_CONFIG_PATH
     toml_values = _load_toml(config_path)
 
     config = _build_config(

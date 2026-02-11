@@ -1,4 +1,4 @@
-"""Download utilities for Lomax search results."""
+"""Download utilities for Llomax search results."""
 
 import json
 import logging
@@ -6,13 +6,15 @@ from pathlib import Path
 
 import requests
 
-from lomax.result import ImageResult, LomaxResult
+from llomax.result import ImageResult, LlomaxResult
 
 logger = logging.getLogger(__name__)
 
 
-def download_images(result: LomaxResult, output_dir: str | Path) -> list[Path]:
-    """Download image files from a LomaxResult to disk.
+def download_images(
+    result: LlomaxResult, output_dir: str | Path
+) -> list[Path]:
+    """Download image files from a LlomaxResult to disk.
 
     Creates directories as ``{output_dir}/{identifier}/`` and writes
     a ``metadata.json`` per item alongside the image files.

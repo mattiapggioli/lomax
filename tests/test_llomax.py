@@ -1,13 +1,13 @@
-"""Tests for the Lomax orchestrator."""
+"""Tests for the Llomax orchestrator."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lomax.config import LomaxConfig
-from lomax.ia_client import SearchResult
-from lomax.lomax import Lomax
-from lomax.result import ImageResult, LomaxResult
+from llomax.config import LlomaxConfig
+from llomax.ia_client import SearchResult
+from llomax.llomax import Llomax
+from llomax.result import ImageResult, LlomaxResult
 
 
 def _img(
@@ -27,23 +27,23 @@ def _img(
     )
 
 
-class TestLomaxInit:
-    """Tests for Lomax initialization."""
+class TestLlomaxInit:
+    """Tests for Llomax initialization."""
 
     def test_default_params(self) -> None:
-        """Test Lomax initializes with default parameters."""
-        lx = Lomax()
+        """Test Llomax initializes with default parameters."""
+        lx = Llomax()
         assert lx.max_results == 10
 
     def test_custom_params(self) -> None:
-        """Test Lomax initializes with custom parameters."""
-        lx = Lomax(LomaxConfig(max_results=5))
+        """Test Llomax initializes with custom parameters."""
+        lx = Llomax(LlomaxConfig(max_results=5))
         assert lx.max_results == 5
 
     def test_stores_search_params(self) -> None:
-        """Test Lomax stores collections, commercial_use, etc."""
-        lx = Lomax(
-            LomaxConfig(
+        """Test Llomax stores collections, commercial_use, etc."""
+        lx = Llomax(
+            LlomaxConfig(
                 collections=["nasa", "smithsonian"],
                 commercial_use=True,
                 filters={"year": "2020"},
@@ -54,22 +54,22 @@ class TestLomaxInit:
         assert lx.filters == {"year": "2020"}
 
     def test_default_search_params(self) -> None:
-        """Test Lomax defaults for new search params."""
-        lx = Lomax()
+        """Test Llomax defaults for new search params."""
+        lx = Llomax()
         assert lx.collections is None
         assert lx.commercial_use is False
         assert lx.filters is None
 
     def test_arbitrary_collection_accepted(self) -> None:
-        """Test Lomax accepts any collection string."""
-        lx = Lomax(LomaxConfig(collections=["my-custom-collection"]))
+        """Test Llomax accepts any collection string."""
+        lx = Llomax(LlomaxConfig(collections=["my-custom-collection"]))
         assert lx.collections == ["my-custom-collection"]
 
 
-class TestLomaxSearchPassthrough:
-    """Tests that Lomax.search() forwards params to IAClient."""
+class TestLlomaxSearchPassthrough:
+    """Tests that Llomax.search() forwards params to IAClient."""
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_forwards_custom_params(
         self,
         mock_extract: MagicMock,
@@ -77,8 +77,8 @@ class TestLomaxSearchPassthrough:
         """Test search() passes stored params to IAClient."""
         mock_extract.return_value = ["test"]
 
-        lx = Lomax(
-            LomaxConfig(
+        lx = Llomax(
+            LlomaxConfig(
                 max_results=3,
                 collections=["nasa"],
                 commercial_use=True,
@@ -101,10 +101,10 @@ class TestLomaxSearchPassthrough:
         )
 
 
-class TestLomaxSearch:
-    """Tests for Lomax.search() pipeline."""
+class TestLlomaxSearch:
+    """Tests for Llomax.search() pipeline."""
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_full_pipeline(
         self,
         mock_extract: MagicMock,
@@ -125,9 +125,12 @@ class TestLomaxSearch:
             mediatype="image",
         )
 
-        lx = Lomax(LomaxConfig(max_results=2))
+        lx = Llomax(LlomaxConfig(max_results=2))
         lx._client = MagicMock()
-        lx._client.search.side_effect = [[sr_jazz], [sr_photo]]
+        lx._client.search.side_effect = [
+            [sr_jazz],
+            [sr_photo],
+        ]
         lx._client.get_item_images.side_effect = lambda id: {
             "jazz-1": [
                 _img("jazz-1", "pic.jpg", "JPEG"),
@@ -154,7 +157,7 @@ class TestLomaxSearch:
             commercial_use=False,
             filters=None,
         )
-        assert isinstance(result, LomaxResult)
+        assert isinstance(result, LlomaxResult)
         assert result.prompt == "jazz, photo"
         assert result.keywords == ["jazz", "photo"]
         assert result.total_items == 2
@@ -162,7 +165,7 @@ class TestLomaxSearch:
         assert "jazz-1" in ids
         assert "photo-1" in ids
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_max_results_override(
         self,
         mock_extract: MagicMock,
@@ -171,7 +174,7 @@ class TestLomaxSearch:
         mock_extract.return_value = ["test"]
         search_results = [SearchResult(f"id-{i}", f"T{i}") for i in range(10)]
 
-        lx = Lomax(LomaxConfig(max_results=10))
+        lx = Llomax(LlomaxConfig(max_results=10))
         lx._client = MagicMock()
         lx._client.search.return_value = search_results
         lx._client.get_item_images.side_effect = lambda id: [_img(id)]
@@ -179,31 +182,31 @@ class TestLomaxSearch:
         result = lx.search("test", max_results=3)
         assert result.total_items == 3
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_empty_results(
         self,
         mock_extract: MagicMock,
     ) -> None:
-        """Test search() returns empty LomaxResult when nothing."""
+        """Test search() returns empty LlomaxResult when nothing."""
         mock_extract.return_value = ["nonexistent"]
 
-        lx = Lomax()
+        lx = Llomax()
         lx._client = MagicMock()
         lx._client.search.return_value = []
         result = lx.search("nonexistent")
 
-        assert isinstance(result, LomaxResult)
+        assert isinstance(result, LlomaxResult)
         assert result.total_images == 0
         assert result.total_items == 0
         assert result.images == []
 
     def test_search_empty_prompt_raises(self) -> None:
         """Test search() propagates ValueError from keywords."""
-        lx = Lomax()
+        lx = Llomax()
         with pytest.raises(ValueError, match="Prompt cannot be empty"):
             lx.search("")
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_skips_item_with_no_images(
         self,
         mock_extract: MagicMock,
@@ -211,7 +214,7 @@ class TestLomaxSearch:
         """Test search() skips items that have no image files."""
         mock_extract.return_value = ["test"]
 
-        lx = Lomax()
+        lx = Llomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="no-images", title="No Images")
@@ -221,7 +224,7 @@ class TestLomaxSearch:
 
         assert result.total_images == 0
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_skips_item_on_get_item_failure(
         self,
         mock_extract: MagicMock,
@@ -229,7 +232,7 @@ class TestLomaxSearch:
         """Test search() skips items when get_item_images fails."""
         mock_extract.return_value = ["test"]
 
-        lx = Lomax()
+        lx = Llomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="fail", title="Fail")
@@ -239,7 +242,7 @@ class TestLomaxSearch:
 
         assert result.total_images == 0
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_multiple_files_per_item(
         self,
         mock_extract: MagicMock,
@@ -247,7 +250,7 @@ class TestLomaxSearch:
         """Test search() returns multiple ImageResults per item."""
         mock_extract.return_value = ["multi"]
 
-        lx = Lomax()
+        lx = Llomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="multi", title="Multi")
@@ -264,7 +267,7 @@ class TestLomaxSearch:
         filenames = {img.filename for img in result.images}
         assert filenames == {"a.jpg", "b.png", "c.gif"}
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_includes_item_metadata(
         self,
         mock_extract: MagicMock,
@@ -286,10 +289,13 @@ class TestLomaxSearch:
             "publisher": "Archive Press",
         }
 
-        lx = Lomax()
+        lx = Llomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
-            SearchResult(identifier="meta-test", title="Jazz Photo")
+            SearchResult(
+                identifier="meta-test",
+                title="Jazz Photo",
+            )
         ]
         lx._client.get_item_images.return_value = [
             ImageResult(
@@ -318,7 +324,7 @@ class TestLomaxSearch:
         assert m["rights"] == "Public Domain"
         assert m["publisher"] == "Archive Press"
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_search_missing_metadata_fields_are_none(
         self,
         mock_extract: MagicMock,
@@ -340,7 +346,7 @@ class TestLomaxSearch:
             "publisher": None,
         }
 
-        lx = Lomax()
+        lx = Llomax()
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult(identifier="sparse", title="Sparse")
@@ -374,16 +380,21 @@ class TestRoundRobinSample:
 
     def test_balances_two_keyword_lists(self) -> None:
         """Round-robin alternates items from each keyword list."""
-        lx = Lomax(LomaxConfig(max_results=4))
+        lx = Llomax(LlomaxConfig(max_results=4))
         cats = [SearchResult(f"cat-{i}", f"Cat {i}") for i in range(3)]
         dogs = [SearchResult(f"dog-{i}", f"Dog {i}") for i in range(3)]
         result = lx._round_robin_sample([cats, dogs], limit=lx.max_results)
         ids = [sr.identifier for sr in result]
-        assert ids == ["cat-0", "dog-0", "cat-1", "dog-1"]
+        assert ids == [
+            "cat-0",
+            "dog-0",
+            "cat-1",
+            "dog-1",
+        ]
 
     def test_deduplicates_by_identifier(self) -> None:
         """Duplicate identifiers across lists are skipped."""
-        lx = Lomax(LomaxConfig(max_results=4))
+        lx = Llomax(LlomaxConfig(max_results=4))
         list_a = [
             SearchResult("shared", "Shared"),
             SearchResult("a-1", "A1"),
@@ -398,7 +409,7 @@ class TestRoundRobinSample:
 
     def test_exhausted_list_skipped(self) -> None:
         """When one list runs out, items come from remaining."""
-        lx = Lomax(LomaxConfig(max_results=4))
+        lx = Llomax(LlomaxConfig(max_results=4))
         short = [SearchResult("s-0", "S0")]
         long = [SearchResult(f"l-{i}", f"L{i}") for i in range(5)]
         result = lx._round_robin_sample([short, long], limit=lx.max_results)
@@ -408,26 +419,26 @@ class TestRoundRobinSample:
 
     def test_stops_at_max_results(self) -> None:
         """Sampling stops once max_results items are collected."""
-        lx = Lomax(LomaxConfig(max_results=2))
+        lx = Llomax(LlomaxConfig(max_results=2))
         big = [SearchResult(f"x-{i}", f"X{i}") for i in range(10)]
         result = lx._round_robin_sample([big], limit=lx.max_results)
         assert len(result) == 2
 
     def test_empty_candidates(self) -> None:
         """Empty candidate list returns empty result."""
-        lx = Lomax(LomaxConfig(max_results=5))
+        lx = Llomax(LlomaxConfig(max_results=5))
         result = lx._round_robin_sample([], limit=lx.max_results)
         assert result == []
 
     def test_all_lists_empty(self) -> None:
         """All-empty candidate lists return empty result."""
-        lx = Lomax(LomaxConfig(max_results=5))
+        lx = Llomax(LlomaxConfig(max_results=5))
         result = lx._round_robin_sample([[], []], limit=lx.max_results)
         assert result == []
 
     def test_all_duplicates_across_lists(self) -> None:
         """When all items are duplicates, only unique ones kept."""
-        lx = Lomax(LomaxConfig(max_results=5))
+        lx = Llomax(LlomaxConfig(max_results=5))
         list_a = [SearchResult("x", "X")]
         list_b = [SearchResult("x", "X")]
         result = lx._round_robin_sample([list_a, list_b], limit=lx.max_results)
@@ -436,7 +447,7 @@ class TestRoundRobinSample:
 
     def test_three_keyword_lists(self) -> None:
         """Round-robin works across three keyword lists."""
-        lx = Lomax(LomaxConfig(max_results=6))
+        lx = Llomax(LlomaxConfig(max_results=6))
         a = [SearchResult(f"a-{i}", f"A{i}") for i in range(3)]
         b = [SearchResult(f"b-{i}", f"B{i}") for i in range(3)]
         c = [SearchResult(f"c-{i}", f"C{i}") for i in range(3)]
@@ -455,7 +466,7 @@ class TestRoundRobinSample:
 class TestScatterGather:
     """Tests for scatter-gather search integration."""
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_per_keyword_limit_is_double(
         self,
         mock_extract: MagicMock,
@@ -463,7 +474,7 @@ class TestScatterGather:
         """Each keyword search uses max_results * 2 as limit."""
         mock_extract.return_value = ["a", "b"]
 
-        lx = Lomax(LomaxConfig(max_results=5))
+        lx = Llomax(LlomaxConfig(max_results=5))
         lx._client = MagicMock()
         lx._client.search.return_value = []
         lx.search("a, b")
@@ -476,7 +487,7 @@ class TestScatterGather:
             assert kwargs["commercial_use"] is False
             assert kwargs["filters"] is None
 
-    @patch("lomax.lomax.extract_keywords")
+    @patch("llomax.llomax.extract_keywords")
     def test_single_keyword_searches_once(
         self,
         mock_extract: MagicMock,
@@ -484,7 +495,7 @@ class TestScatterGather:
         """Single keyword degenerates to one search call."""
         mock_extract.return_value = ["jazz"]
 
-        lx = Lomax(LomaxConfig(max_results=3))
+        lx = Llomax(LlomaxConfig(max_results=3))
         lx._client = MagicMock()
         lx._client.search.return_value = [
             SearchResult("j-0", "J0"),
@@ -504,8 +515,8 @@ class TestScatterGather:
         assert result.total_items == 2
 
 
-class TestLomaxResultToDict:
-    """Tests for LomaxResult.to_dict() serialization."""
+class TestLlomaxResultToDict:
+    """Tests for LlomaxResult.to_dict() serialization."""
 
     def test_to_dict_structure(self) -> None:
         """Test to_dict() returns correct structure."""
@@ -518,7 +529,7 @@ class TestLomaxResultToDict:
             md5="abc123",
             metadata={"title": "Test"},
         )
-        result = LomaxResult(
+        result = LlomaxResult(
             prompt="jazz",
             keywords=["jazz"],
             images=[img],
@@ -536,7 +547,7 @@ class TestLomaxResultToDict:
 
     def test_to_dict_empty_result(self) -> None:
         """Test to_dict() with no images."""
-        result = LomaxResult(
+        result = LlomaxResult(
             prompt="nothing",
             keywords=["nothing"],
             images=[],

@@ -1,9 +1,9 @@
-[lomax]
-output_dir = "~/data/lomax"
+[llomax]
+output_dir = "~/data/llomax"
 max_results = 10
 # collections = ["nasa", "smithsonian"]
 # commercial_use = false
 
-# [lomax.filters]
+# [llomax.filters]
 # year = "2020"
 # date = "[1950-01-01 TO 1959-12-31]"

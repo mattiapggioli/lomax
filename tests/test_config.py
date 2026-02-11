@@ -1,38 +1,38 @@
-"""Tests for LomaxConfig."""
+"""Tests for LlomaxConfig."""
 
-from lomax.config import LomaxConfig
+from llomax.config import LlomaxConfig
 
 
-class TestLomaxConfigDefaults:
-    """Tests for LomaxConfig default values."""
+class TestLlomaxConfigDefaults:
+    """Tests for LlomaxConfig default values."""
 
     def test_default_output_dir(self) -> None:
-        """Test default output_dir is 'lomax_output'."""
-        config = LomaxConfig()
-        assert config.output_dir == "lomax_output"
+        """Test default output_dir is 'llomax_output'."""
+        config = LlomaxConfig()
+        assert config.output_dir == "llomax_output"
 
     def test_default_max_results(self) -> None:
         """Test default max_results is 10."""
-        config = LomaxConfig()
+        config = LlomaxConfig()
         assert config.max_results == 10
 
 
-class TestLomaxConfigOverride:
-    """Tests for overriding LomaxConfig values."""
+class TestLlomaxConfigOverride:
+    """Tests for overriding LlomaxConfig values."""
 
     def test_override_output_dir(self) -> None:
         """Test overriding output_dir."""
-        config = LomaxConfig(output_dir="/tmp/custom")
+        config = LlomaxConfig(output_dir="/tmp/custom")
         assert config.output_dir == "/tmp/custom"
 
     def test_override_max_results(self) -> None:
         """Test overriding max_results."""
-        config = LomaxConfig(max_results=50)
+        config = LlomaxConfig(max_results=50)
         assert config.max_results == 50
 
     def test_override_all(self) -> None:
         """Test overriding all values."""
-        config = LomaxConfig(
+        config = LlomaxConfig(
             output_dir="~/images",
             max_results=25,
         )

@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from lomax.result import ImageResult, LomaxResult
-from lomax.util import download_images
+from llomax.result import ImageResult, LlomaxResult
+from llomax.util import download_images
 
 
 def _make_image(
@@ -36,11 +36,11 @@ def _make_image(
 
 def _make_result(
     images: list[ImageResult] | None = None,
-) -> LomaxResult:
-    """Build a LomaxResult for testing."""
+) -> LlomaxResult:
+    """Build a LlomaxResult for testing."""
     if images is None:
         images = [_make_image()]
-    return LomaxResult(
+    return LlomaxResult(
         prompt="test",
         keywords=["test"],
         images=images,
@@ -50,7 +50,7 @@ def _make_result(
 class TestDownloadImages:
     """Tests for download_images()."""
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_successful_download(
         self,
         mock_get: MagicMock,
@@ -94,7 +94,7 @@ class TestDownloadImages:
         assert meta["files"][0]["size"] == 1024
         assert meta["files"][0]["md5"] == "abc123"
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_metadata_contains_download_url(
         self,
         mock_get: MagicMock,
@@ -117,7 +117,7 @@ class TestDownloadImages:
         expected_url = "https://archive.org/download/url-test/img.png"
         assert meta["files"][0]["url"] == expected_url
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_directory_creation(
         self,
         mock_get: MagicMock,
@@ -137,7 +137,7 @@ class TestDownloadImages:
         assert paths[0].parent == out / "dir-test"
         assert paths[0].parent.exists()
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_multiple_files_per_item(
         self,
         mock_get: MagicMock,
@@ -152,9 +152,30 @@ class TestDownloadImages:
         metadata = {"identifier": "multi", "title": "Multi"}
         result = _make_result(
             images=[
-                _make_image("multi", "a.jpg", "JPEG", 100, "m1", metadata),
-                _make_image("multi", "b.png", "PNG", 200, "m2", metadata),
-                _make_image("multi", "c.gif", "GIF", 300, "m3", metadata),
+                _make_image(
+                    "multi",
+                    "a.jpg",
+                    "JPEG",
+                    100,
+                    "m1",
+                    metadata,
+                ),
+                _make_image(
+                    "multi",
+                    "b.png",
+                    "PNG",
+                    200,
+                    "m2",
+                    metadata,
+                ),
+                _make_image(
+                    "multi",
+                    "c.gif",
+                    "GIF",
+                    300,
+                    "m3",
+                    metadata,
+                ),
             ]
         )
         paths = download_images(result, tmp_path / "output")
@@ -167,7 +188,7 @@ class TestDownloadImages:
         meta = json.loads(meta_path.read_text())
         assert len(meta["files"]) == 3
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_partial_download_failure(
         self,
         mock_get: MagicMock,
@@ -183,11 +204,23 @@ class TestDownloadImages:
 
         mock_get.side_effect = [good_resp, bad_resp]
 
-        metadata = {"identifier": "partial", "title": "Partial"}
+        metadata = {
+            "identifier": "partial",
+            "title": "Partial",
+        }
         result = _make_result(
             images=[
-                _make_image("partial", "good.jpg", metadata=metadata),
-                _make_image("partial", "bad.png", "PNG", metadata=metadata),
+                _make_image(
+                    "partial",
+                    "good.jpg",
+                    metadata=metadata,
+                ),
+                _make_image(
+                    "partial",
+                    "bad.png",
+                    "PNG",
+                    metadata=metadata,
+                ),
             ]
         )
         paths = download_images(result, tmp_path / "output")
@@ -200,7 +233,7 @@ class TestDownloadImages:
         assert len(meta["files"]) == 1
         assert meta["files"][0]["name"] == "good.jpg"
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_all_downloads_fail(
         self,
         mock_get: MagicMock,
@@ -217,7 +250,7 @@ class TestDownloadImages:
         meta_path = tmp_path / "output" / "all-fail" / "metadata.json"
         assert not meta_path.exists()
 
-    @patch("lomax.util.requests.get")
+    @patch("llomax.util.requests.get")
     def test_empty_result(
         self,
         mock_get: MagicMock,

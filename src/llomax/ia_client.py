@@ -7,7 +7,7 @@ from itertools import islice
 
 import internetarchive as ia
 
-from lomax.result import ImageResult
+from llomax.result import ImageResult
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,8 @@ class IAClient:
         """Initialize the IA client.
 
         Args:
-            mediatype: The type of media to search for. Defaults to "image".
+            mediatype: The type of media to search for.
+                Defaults to "image".
         """
         self.mediatype = mediatype
 
@@ -124,7 +125,7 @@ class IAClient:
         commercial_use: bool = False,
         filters: dict[str, str | list[str]] | None = None,
     ) -> list[SearchResult]:
-        """Search the Internet Archive for items matching the keywords.
+        """Search the Internet Archive for items matching keywords.
 
         Args:
             keywords: List of keywords to search for.
@@ -237,7 +238,7 @@ class IAClient:
     def _execute_search(
         self, query: str, max_results: int
     ) -> list[SearchResult]:
-        """Execute the search query against the Internet Archive.
+        """Execute the search query against the IA.
 
         Args:
             query: The formatted search query.

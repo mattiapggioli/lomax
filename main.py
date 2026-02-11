@@ -1,16 +1,16 @@
-"""Run Lomax from the command line."""
+"""Run Llomax from the command line."""
 
 import sys
 
 from cli_utils import get_cli_config
-from lomax import Lomax, download_images
+from llomax import Llomax, download_images
 
 
 def main() -> None:
-    """Parse arguments and run the Lomax pipeline."""
+    """Parse arguments and run the Llomax pipeline."""
     prompt, config = get_cli_config()
 
-    lx = Lomax(config)
+    lx = Llomax(config)
     result = lx.search(prompt)
 
     if not result.images:
