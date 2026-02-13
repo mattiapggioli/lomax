@@ -40,30 +40,15 @@ class TestLlomaxInit:
         lx = Llomax(LlomaxConfig(max_results=5))
         assert lx.max_results == 5
 
-    def test_stores_search_params(self) -> None:
-        """Test Llomax stores collections, commercial_use, etc."""
-        lx = Llomax(
-            LlomaxConfig(
-                collections=["nasa", "smithsonian"],
-                commercial_use=True,
-                filters={"year": "2020"},
-            )
-        )
-        assert lx.collections == ["nasa", "smithsonian"]
+    def test_stores_commercial_use(self) -> None:
+        """Test Llomax stores commercial_use from config."""
+        lx = Llomax(LlomaxConfig(commercial_use=True))
         assert lx.commercial_use is True
-        assert lx.filters == {"year": "2020"}
 
-    def test_default_search_params(self) -> None:
-        """Test Llomax defaults for new search params."""
+    def test_default_commercial_use(self) -> None:
+        """Test Llomax defaults commercial_use to False."""
         lx = Llomax()
-        assert lx.collections is None
         assert lx.commercial_use is False
-        assert lx.filters is None
-
-    def test_arbitrary_collection_accepted(self) -> None:
-        """Test Llomax accepts any collection string."""
-        lx = Llomax(LlomaxConfig(collections=["my-custom-collection"]))
-        assert lx.collections == ["my-custom-collection"]
 
 
 class TestLlomaxSearchPassthrough:
@@ -80,13 +65,13 @@ class TestLlomaxSearchPassthrough:
         lx = Llomax(
             LlomaxConfig(
                 max_results=3,
-                collections=["nasa"],
                 commercial_use=True,
-                filters={"year": "2020"},
             )
         )
         lx._client = MagicMock()
-        lx._client.search.return_value = [SearchResult("t-1", "T1")]
+        lx._client.search.return_value = [
+            SearchResult("t-1", "T1"),
+        ]
         lx._client.get_item_images.return_value = [
             _img("t-1"),
         ]
@@ -95,9 +80,7 @@ class TestLlomaxSearchPassthrough:
         lx._client.search.assert_called_once_with(
             ["test"],
             max_results=6,
-            collections=["nasa"],
             commercial_use=True,
-            filters={"year": "2020"},
         )
 
 
@@ -146,16 +129,12 @@ class TestLlomaxSearch:
         lx._client.search.assert_any_call(
             ["jazz"],
             max_results=4,
-            collections=None,
             commercial_use=False,
-            filters=None,
         )
         lx._client.search.assert_any_call(
             ["photo"],
             max_results=4,
-            collections=None,
             commercial_use=False,
-            filters=None,
         )
         assert isinstance(result, LlomaxResult)
         assert result.prompt == "jazz, photo"
@@ -483,9 +462,7 @@ class TestScatterGather:
         for call_args in lx._client.search.call_args_list:
             _, kwargs = call_args
             assert kwargs["max_results"] == 10
-            assert kwargs["collections"] is None
             assert kwargs["commercial_use"] is False
-            assert kwargs["filters"] is None
 
     @patch("llomax.llomax.extract_keywords")
     def test_single_keyword_searches_once(
@@ -508,9 +485,7 @@ class TestScatterGather:
         lx._client.search.assert_called_once_with(
             ["jazz"],
             max_results=6,
-            collections=None,
             commercial_use=False,
-            filters=None,
         )
         assert result.total_items == 2
 

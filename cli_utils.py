@@ -26,35 +26,6 @@ def _load_toml(path: Path) -> dict:
     return data.get("llomax", {})
 
 
-def _parse_filters(
-    raw: list[str] | None,
-) -> dict[str, str | list[str]] | None:
-    """Parse repeatable key=value filter strings into a dict.
-
-    Duplicate keys are merged into a list.
-
-    Args:
-        raw: List of "key=value" strings, or None.
-
-    Returns:
-        Dict mapping field names to values, or None.
-    """
-    if not raw:
-        return None
-    result: dict[str, str | list[str]] = {}
-    for item in raw:
-        key, _, value = item.partition("=")
-        if key in result:
-            existing = result[key]
-            if isinstance(existing, list):
-                existing.append(value)
-            else:
-                result[key] = [existing, value]
-        else:
-            result[key] = value
-    return result
-
-
 def _build_config(
     toml_values: dict,
     cli_args: argparse.Namespace,
@@ -77,26 +48,16 @@ def _build_config(
         config.output_dir = toml_values["output_dir"]
     if "max_results" in toml_values:
         config.max_results = toml_values["max_results"]
-    if "collections" in toml_values:
-        config.collections = toml_values["collections"]
     if "commercial_use" in toml_values:
         config.commercial_use = toml_values["commercial_use"]
-    if "filters" in toml_values:
-        config.filters = toml_values["filters"]
 
     # Layer 3: CLI overrides TOML
     if cli_args.output_dir is not None:
         config.output_dir = cli_args.output_dir
     if cli_args.max_results is not None:
         config.max_results = cli_args.max_results
-    if cli_args.collections is not None:
-        config.collections = cli_args.collections
     if cli_args.commercial_use is not None:
         config.commercial_use = cli_args.commercial_use
-
-    cli_filters = _parse_filters(cli_args.filters)
-    if cli_filters is not None:
-        config.filters = cli_filters
 
     return config
 
@@ -130,26 +91,10 @@ def get_cli_config() -> tuple[str, LlomaxConfig]:
         help=(f"path to config file (default: {DEFAULT_CONFIG_PATH})"),
     )
     parser.add_argument(
-        "--collections",
-        nargs="+",
-        default=None,
-        help="restrict to these IA collections",
-    )
-    parser.add_argument(
         "--commercial-use",
         action=argparse.BooleanOptionalAction,
         default=None,
         help="restrict to commercial-use licenses",
-    )
-    parser.add_argument(
-        "--filter",
-        action="append",
-        dest="filters",
-        default=None,
-        help=(
-            "IA field filter as key=value"
-            " (repeatable, e.g. --filter year=2020)"
-        ),
     )
     args = parser.parse_args()
 

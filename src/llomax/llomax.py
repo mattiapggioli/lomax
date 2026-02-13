@@ -24,9 +24,7 @@ class Llomax:
         if config is None:
             config = LlomaxConfig()
         self.max_results = config.max_results
-        self.collections = config.collections
         self.commercial_use = config.commercial_use
-        self.filters = config.filters
         self._client = IAClient()
 
     def search(
@@ -87,9 +85,7 @@ class Llomax:
             return self._client.search(
                 [kw],
                 max_results=per_keyword_limit,
-                collections=self.collections,
                 commercial_use=self.commercial_use,
-                filters=self.filters,
             )
 
         workers = min(len(keywords), 8)

@@ -6,7 +6,6 @@ from pathlib import Path
 from cli_utils import (
     _build_config,
     _load_toml,
-    _parse_filters,
 )
 from llomax.config import LlomaxConfig
 
@@ -16,9 +15,7 @@ def _make_args(**overrides: object) -> argparse.Namespace:
     defaults = {
         "output_dir": None,
         "max_results": None,
-        "collections": None,
         "commercial_use": None,
-        "filters": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -115,87 +112,30 @@ class TestBuildConfig:
         config = _build_config({}, _make_args())
         assert isinstance(config, LlomaxConfig)
 
-    def test_defaults_include_new_fields(self) -> None:
-        """No TOML, no CLI -> library defaults for new fields."""
+    def test_defaults_include_commercial_use(self) -> None:
+        """No TOML, no CLI -> commercial_use defaults to False."""
         config = _build_config({}, _make_args())
-        assert config.collections is None
         assert config.commercial_use is False
-        assert config.filters is None
 
-    def test_toml_overrides_new_fields(self) -> None:
-        """TOML values override library defaults for new fields."""
-        toml = {
-            "collections": ["nasa", "smithsonian"],
-            "commercial_use": True,
-            "filters": {"year": "2020"},
-        }
+    def test_toml_overrides_commercial_use(self) -> None:
+        """TOML value overrides commercial_use default."""
+        toml = {"commercial_use": True}
         config = _build_config(toml, _make_args())
-        assert config.collections == [
-            "nasa",
-            "smithsonian",
-        ]
         assert config.commercial_use is True
-        assert config.filters == {"year": "2020"}
 
-    def test_cli_overrides_new_fields(self) -> None:
-        """CLI values override TOML for new fields."""
-        toml = {
-            "collections": ["nasa"],
-            "commercial_use": True,
-            "filters": {"year": "2020"},
-        }
+    def test_cli_overrides_commercial_use(self) -> None:
+        """CLI value overrides TOML commercial_use."""
+        toml = {"commercial_use": True}
         config = _build_config(
             toml,
-            _make_args(
-                collections=["flickr-commons"],
-                commercial_use=False,
-                filters=["creator=NASA"],
-            ),
+            _make_args(commercial_use=False),
         )
-        assert config.collections == ["flickr-commons"]
         assert config.commercial_use is False
-        assert config.filters == {"creator": "NASA"}
 
-    def test_partial_cli_new_fields(self) -> None:
-        """CLI overrides only the new fields provided."""
-        toml = {
-            "collections": ["nasa"],
-            "commercial_use": True,
-        }
+    def test_partial_cli_preserves_toml_commercial_use(
+        self,
+    ) -> None:
+        """TOML commercial_use preserved without CLI override."""
+        toml = {"commercial_use": True}
         config = _build_config(toml, _make_args())
-        assert config.collections == ["nasa"]
         assert config.commercial_use is True
-        assert config.filters is None
-
-
-class TestParseFilters:
-    """Tests for _parse_filters() helper."""
-
-    def test_none_input(self) -> None:
-        """None input returns None."""
-        assert _parse_filters(None) is None
-
-    def test_empty_list(self) -> None:
-        """Empty list returns None."""
-        assert _parse_filters([]) is None
-
-    def test_single_values(self) -> None:
-        """Single key=value pairs produce string values."""
-        result = _parse_filters(["year=2020", "creator=NASA"])
-        assert result == {
-            "year": "2020",
-            "creator": "NASA",
-        }
-
-    def test_duplicate_keys_merge(self) -> None:
-        """Duplicate keys are merged into a list."""
-        result = _parse_filters(["subject=jazz", "subject=photo", "year=2020"])
-        assert result == {
-            "subject": ["jazz", "photo"],
-            "year": "2020",
-        }
-
-    def test_triple_duplicate_keys(self) -> None:
-        """Three duplicate keys produce a three-element list."""
-        result = _parse_filters(["tag=a", "tag=b", "tag=c"])
-        assert result == {"tag": ["a", "b", "c"]}
