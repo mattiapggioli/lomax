@@ -60,3 +60,5 @@ Follow TDD: write tests first, then implement, then run `uv run pytest`, then `u
 - `test_ia_client.py` — **hits the real Internet Archive API** (no mocks); requires network access and may be slow
 - `test_util.py` — mocks `requests.get` via `@patch("llomax.util.requests.get")` and uses `tmp_path` for filesystem assertions
 - `test_main.py` — tests `cli_utils.py` functions (`_build_config`, `_load_toml`); uses `tmp_path` for TOML file tests
+- `test_config.py` — tests `LlomaxConfig` defaults and field overrides
+- `test_semantic_bridge.py` — tests `extract_keywords()` comma splitting and `ValueError` on empty input
